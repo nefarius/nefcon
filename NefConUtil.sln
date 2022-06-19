@@ -1,0 +1,43 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.32602.291
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NefConUtil", "NefConUtil.vcxproj", "{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug (WinMain)|x64 = Debug (WinMain)|x64
+		Debug (WinMain)|x86 = Debug (WinMain)|x86
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release (WinMain)|x64 = Release (WinMain)|x64
+		Release (WinMain)|x86 = Release (WinMain)|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Debug (WinMain)|x64.ActiveCfg = Debug (WinMain)|x64
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Debug (WinMain)|x64.Build.0 = Debug (WinMain)|x64
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Debug (WinMain)|x86.ActiveCfg = Debug (WinMain)|Win32
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Debug (WinMain)|x86.Build.0 = Debug (WinMain)|Win32
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Debug|x64.ActiveCfg = Debug|x64
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Debug|x64.Build.0 = Debug|x64
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Debug|x86.ActiveCfg = Debug|Win32
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Debug|x86.Build.0 = Debug|Win32
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Release (WinMain)|x64.ActiveCfg = Release (WinMain)|x64
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Release (WinMain)|x64.Build.0 = Release (WinMain)|x64
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Release (WinMain)|x86.ActiveCfg = Release (WinMain)|Win32
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Release (WinMain)|x86.Build.0 = Release (WinMain)|Win32
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Release|x64.ActiveCfg = Release|x64
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Release|x64.Build.0 = Release|x64
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Release|x86.ActiveCfg = Release|Win32
+		{95155A88-FEDA-443A-B85D-2DB6A8CD4CBE}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D0547397-2E66-4F40-AE7E-1689904D7418}
+	EndGlobalSection
+EndGlobal
