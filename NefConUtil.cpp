@@ -12,6 +12,18 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 
 
+bool IsCurlyBracket(char c)
+{
+    switch(c)
+    {
+    case '{':
+    case '}':
+        return true;
+    default:
+        return false;
+    }
+}
+
 #if defined(NEFCON_WINMAIN)
 int WINAPI WinMain (
     _In_ HINSTANCE hInstance,
@@ -30,7 +42,10 @@ int main(int, char* argv[])
 		"--class-name",
 		"--class-guid",
 		"--service-name",
-		"--position"
+		"--position",
+		"--service-name",
+		"--display-name",
+		"--bin-path"
 		});
 
 #if defined(NEFCON_WINMAIN)
@@ -63,7 +78,7 @@ int main(int, char* argv[])
 	cmdl.parse(argv);
 #endif
 
-	std::string infPath, binPath, hwId, className, classGuid, serviceName, position;
+	std::string infPath, binPath, hwId, className, classGuid, serviceName, displayName, position;
 
 #pragma region Filter Driver actions
 
@@ -83,6 +98,8 @@ int main(int, char* argv[])
 			std::cout << color(red) << "Device Class GUID missing" << std::endl;
 			return EXIT_FAILURE;
 		}
+
+		classGuid.erase(std::remove_if(classGuid.begin(), classGuid.end(), &IsCurlyBracket), classGuid.end());
 
 		GUID clID;
 
@@ -235,6 +252,60 @@ int main(int, char* argv[])
 		return (rebootRequired) ? ERROR_RESTART_APPLICATION : EXIT_SUCCESS;
 	}
 
+	if (cmdl[{ "--create-driver-service" }])
+	{
+		binPath = cmdl({ "--bin-path" }).str();
+
+		if (binPath.empty()) {
+			std::cout << color(red) << "Binary path missing" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (!(cmdl({ "--service-name" }) >> serviceName)) {
+			std::cout << color(red) << "Service name missing" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		displayName = cmdl({ "--display-name" }).str();
+
+		if (displayName.empty()) {
+			std::cout << color(red) << "Display name missing" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (!winapi::CreateDriverService(serviceName.c_str(), displayName.c_str(), binPath.c_str()))
+		{
+			std::cout << color(red) <<
+				"Failed to create driver service, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return GetLastError();
+		}
+
+		std::cout << color(green) << "Driver service created successfully" << std::endl;
+
+		return EXIT_SUCCESS;
+	}
+
+	if (cmdl[{ "--remove-driver-service" }])
+	{		
+		if (!(cmdl({ "--service-name" }) >> serviceName)) {
+			std::cout << color(red) << "Service name missing" << std::endl;
+			return EXIT_FAILURE;
+		}
+		
+		if (!winapi::DeleteDriverService(serviceName.c_str()))
+		{
+			std::cout << color(red) <<
+				"Failed to remove driver service, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return GetLastError();
+		}
+
+		std::cout << color(green) << "Driver service created successfully" << std::endl;
+
+		return EXIT_SUCCESS;
+	}
+
 	if (cmdl[{ "--create-device-node" }])
 	{
 		if (!(cmdl({ "--hardware-id" }) >> hwId)) {
@@ -251,6 +322,8 @@ int main(int, char* argv[])
 			std::cout << color(red) << "Device Class GUID missing" << std::endl;
 			return EXIT_FAILURE;
 		}
+
+		classGuid.erase(std::remove_if(classGuid.begin(), classGuid.end(), &IsCurlyBracket), classGuid.end());
 
 		GUID clID;
 
@@ -286,6 +359,8 @@ int main(int, char* argv[])
 			std::cout << color(red) << "Device Class GUID missing" << std::endl;
 			return EXIT_FAILURE;
 		}
+
+		classGuid.erase(std::remove_if(classGuid.begin(), classGuid.end(), &IsCurlyBracket), classGuid.end());
 
 		GUID clID;
 
@@ -329,28 +404,34 @@ int main(int, char* argv[])
 
 	std::cout << "usage: .\\nefcon [options]" << std::endl << std::endl;
 	std::cout << "  options:" << std::endl;
-	std::cout << "    --install-driver          Invoke the installation of a given PNP driver" << std::endl;
-	std::cout << "      --inf-path              Path to the INF file to install (required)" << std::endl;
-	std::cout << "    --uninstall-driver        Invoke the removal of a given PNP driver" << std::endl;
-	std::cout << "      --inf-path              Path to the INF file to uninstall (required)" << std::endl;
-	std::cout << "    --create-device-node      Create a new ROOT enumerated virtual device" << std::endl;
-	std::cout << "      --hardware-id           Hardware ID of the new device (required)" << std::endl;
-	std::cout << "      --class-name            Device Class Name of the new device (required)" << std::endl;
-	std::cout << "      --class-guid            Device Class GUID of the new device (required)" << std::endl;
-	std::cout << "    --remove-device-node      Removes a device and its driver" << std::endl;
-	std::cout << "      --hardware-id           Hardware ID of the device (required)" << std::endl;
-	std::cout << "      --class-guid            Device Class GUID of the device (required)" << std::endl;
-	std::cout << "    --add-class-filter        Adds a service to a device class' filter collection" << std::endl;
-	std::cout << "      --position              Which filter to modify (required)" << std::endl;
-	std::cout << "                                Valid values include: upper|lower" << std::endl;
-	std::cout << "      --service-name          The driver service name to insert (required)" << std::endl;
-	std::cout << "      --class-guid            Device Class GUID to modify (required)" << std::endl;
-	std::cout << "    --remove-class-filter     Removes a service to a device class' filter collection" << std::endl;
-	std::cout << "      --position              Which filter to modify (required)" << std::endl;
-	std::cout << "                                Valid values include: upper|lower" << std::endl;
-	std::cout << "      --service-name          The driver service name to insert (required)" << std::endl;
-	std::cout << "      --class-guid            Device Class GUID to modify (required)" << std::endl;
-	std::cout << "    -v, --version             Display version of this utility" << std::endl;
+	std::cout << "    --install-driver           Invoke the installation of a given PNP driver" << std::endl;
+	std::cout << "      --inf-path               Path to the INF file to install (required)" << std::endl;
+	std::cout << "    --uninstall-driver         Invoke the removal of a given PNP driver" << std::endl;
+	std::cout << "      --inf-path               Path to the INF file to uninstall (required)" << std::endl;
+	std::cout << "    --create-device-node       Create a new ROOT enumerated virtual device" << std::endl;
+	std::cout << "      --hardware-id            Hardware ID of the new device (required)" << std::endl;
+	std::cout << "      --class-name             Device Class Name of the new device (required)" << std::endl;
+	std::cout << "      --class-guid             Device Class GUID of the new device (required)" << std::endl;
+	std::cout << "    --remove-device-node       Removes a device and its driver" << std::endl;
+	std::cout << "      --hardware-id            Hardware ID of the device (required)" << std::endl;
+	std::cout << "      --class-guid             Device Class GUID of the device (required)" << std::endl;
+	std::cout << "    --add-class-filter         Adds a service to a device class' filter collection" << std::endl;
+	std::cout << "      --position               Which filter to modify (required)" << std::endl;
+	std::cout << "                                 Valid values include: upper|lower" << std::endl;
+	std::cout << "      --service-name           The driver service name to insert (required)" << std::endl;
+	std::cout << "      --class-guid             Device Class GUID to modify (required)" << std::endl;
+	std::cout << "    --remove-class-filter      Removes a service to a device class' filter collection" << std::endl;
+	std::cout << "      --position               Which filter to modify (required)" << std::endl;
+	std::cout << "                                 Valid values include: upper|lower" << std::endl;
+	std::cout << "      --service-name           The driver service name to insert (required)" << std::endl;
+	std::cout << "      --class-guid             Device Class GUID to modify (required)" << std::endl;
+	std::cout << "    --create-driver-service    Creates a new service with a kernel driver as binary" << std::endl;
+	std::cout << "      --bin-path               Absolute path to the .sys file (required)" << std::endl;
+	std::cout << "      --service-name           The driver service name to create (required)" << std::endl;
+	std::cout << "      --display-name           The friendly name of the service (required)" << std::endl;
+	std::cout << "    --remove-driver-service    Removes an existing kernel driver service" << std::endl;
+	std::cout << "      --service-name           The driver service name to remove (required)" << std::endl;
+	std::cout << "    -v, --version              Display version of this utility" << std::endl;
 	std::cout << std::endl;
 
 #pragma endregion
