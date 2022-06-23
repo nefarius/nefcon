@@ -275,6 +275,43 @@ int main(int, char* argv[])
 		return EXIT_SUCCESS;
 	}
 
+	if (cmdl[{ "--remove-device-node" }])
+	{
+		if (!(cmdl({ "--hardware-id" }) >> hwId)) {
+			std::cout << color(red) << "Hardware ID missing" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (!(cmdl({ "--class-guid" }) >> classGuid)) {
+			std::cout << color(red) << "Device Class GUID missing" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		GUID clID;
+
+		if (UuidFromStringA(reinterpret_cast<RPC_CSTR>(&classGuid[0]), &clID) == RPC_S_INVALID_STRING_UUID)
+		{
+			std::cout << color(red) << "Device Class GUID format invalid, expected format (no brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		bool rebootRequired;
+
+		auto ret = devcon::uninstall_device_and_driver(&clID, to_wstring(hwId), &rebootRequired);
+
+		if (!ret)
+		{
+			std::cout << color(red) <<
+				"Failed to delete device node, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return GetLastError();
+		}
+
+		std::cout << color(green) << "Device and driver removed successfully" << std::endl;
+
+		return (rebootRequired) ? ERROR_RESTART_APPLICATION : EXIT_SUCCESS;
+	}
+
 #pragma endregion
 
 	if (cmdl[{ "-v", "--version" }])
@@ -300,6 +337,9 @@ int main(int, char* argv[])
 	std::cout << "      --hardware-id           Hardware ID of the new device (required)" << std::endl;
 	std::cout << "      --class-name            Device Class Name of the new device (required)" << std::endl;
 	std::cout << "      --class-guid            Device Class GUID of the new device (required)" << std::endl;
+	std::cout << "    --remove-device-node      Removes a device and its driver" << std::endl;
+	std::cout << "      --hardware-id           Hardware ID of the device (required)" << std::endl;
+	std::cout << "      --class-guid            Device Class GUID of the device (required)" << std::endl;
 	std::cout << "    --add-class-filter        Adds a service to a device class' filter collection" << std::endl;
 	std::cout << "      --position              Which filter to modify (required)" << std::endl;
 	std::cout << "                                Valid values include: upper|lower" << std::endl;
