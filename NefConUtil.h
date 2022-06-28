@@ -11,13 +11,7 @@
 #include <winioctl.h>
 #include <rpc.h>
 #include <shellapi.h>
-
-//
-// OS Bluetooth APIs
-// 
-#include <bthsdpdef.h>
-#include <bthdef.h>
-#include <bluetoothapis.h>
+#include <io.h>
 
 //
 // Device class interfaces

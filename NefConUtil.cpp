@@ -14,23 +14,23 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 bool IsCurlyBracket(char c)
 {
-    switch(c)
-    {
-    case '{':
-    case '}':
-        return true;
-    default:
-        return false;
-    }
+	switch (c)
+	{
+	case '{':
+	case '}':
+		return true;
+	default:
+		return false;
+	}
 }
 
 #if defined(NEFCON_WINMAIN)
-int WINAPI WinMain (
-    _In_ HINSTANCE hInstance,
-    _In_opt_ HINSTANCE hPrevInstance,
-    _In_ LPSTR lpCmdLine,
-    _In_ int nShowCmd
-    )
+int WINAPI WinMain(
+	_In_ HINSTANCE hInstance,
+	_In_opt_ HINSTANCE hPrevInstance,
+	_In_ LPSTR lpCmdLine,
+	_In_ int nShowCmd
+)
 #else
 int main(int, char* argv[])
 #endif
@@ -213,6 +213,12 @@ int main(int, char* argv[])
 			return EXIT_FAILURE;
 		}
 
+		if (_access(infPath.c_str(), 0) != 0)
+		{
+			std::cout << color(red) << "The given INF file doesn't exist, is the path correct?" << std::endl;
+			return EXIT_FAILURE;
+		}
+
 		bool rebootRequired;
 
 		if (!devcon::install_driver(to_wstring(infPath), &rebootRequired))
@@ -237,6 +243,12 @@ int main(int, char* argv[])
 			return EXIT_FAILURE;
 		}
 
+		if (_access(infPath.c_str(), 0) != 0)
+		{
+			std::cout << color(red) << "The given INF file doesn't exist, is the path correct?" << std::endl;
+			return EXIT_FAILURE;
+		}
+
 		bool rebootRequired;
 
 		if (!devcon::uninstall_driver(to_wstring(infPath), &rebootRequired))
@@ -258,6 +270,12 @@ int main(int, char* argv[])
 
 		if (binPath.empty()) {
 			std::cout << color(red) << "Binary path missing" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (_access(binPath.c_str(), 0) != 0)
+		{
+			std::cout << color(red) << "The given binary file doesn't exist, is the path correct?" << std::endl;
 			return EXIT_FAILURE;
 		}
 
@@ -287,12 +305,12 @@ int main(int, char* argv[])
 	}
 
 	if (cmdl[{ "--remove-driver-service" }])
-	{		
+	{
 		if (!(cmdl({ "--service-name" }) >> serviceName)) {
 			std::cout << color(red) << "Service name missing" << std::endl;
 			return EXIT_FAILURE;
 		}
-		
+
 		if (!winapi::DeleteDriverService(serviceName.c_str()))
 		{
 			std::cout << color(red) <<
