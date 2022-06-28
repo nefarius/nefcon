@@ -420,7 +420,11 @@ int main(int, char* argv[])
 
 #pragma region Print usage
 
-	std::cout << "usage: .\\nefcon [options]" << std::endl << std::endl;
+#if defined(NEFCON_WINMAIN)
+	std::cout << "usage: .\\nefconw [options]" << std::endl << std::endl;
+#else
+	std::cout << "usage: .\\nefconc [options]" << std::endl << std::endl;
+#endif
 	std::cout << "  options:" << std::endl;
 	std::cout << "    --install-driver           Invoke the installation of a given PNP driver" << std::endl;
 	std::cout << "      --inf-path               Path to the INF file to install (required)" << std::endl;
