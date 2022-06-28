@@ -427,9 +427,9 @@ int main(int, char* argv[])
 #endif
 	std::cout << "  options:" << std::endl;
 	std::cout << "    --install-driver           Invoke the installation of a given PNP driver" << std::endl;
-	std::cout << "      --inf-path               Path to the INF file to install (required)" << std::endl;
+	std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << std::endl;
 	std::cout << "    --uninstall-driver         Invoke the removal of a given PNP driver" << std::endl;
-	std::cout << "      --inf-path               Path to the INF file to uninstall (required)" << std::endl;
+	std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << std::endl;
 	std::cout << "    --create-device-node       Create a new ROOT enumerated virtual device" << std::endl;
 	std::cout << "      --hardware-id            Hardware ID of the new device (required)" << std::endl;
 	std::cout << "      --class-name             Device Class Name of the new device (required)" << std::endl;
