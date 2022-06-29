@@ -219,6 +219,14 @@ int main(int, char* argv[])
 			return EXIT_FAILURE;
 		}
 
+		const DWORD attribs = GetFileAttributesA(infPath.c_str());
+
+		if (attribs & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			std::cout << color(red) << "The given INF path is a directory, not a file" << std::endl;
+			return EXIT_FAILURE;
+		}
+
 		bool rebootRequired;
 
 		if (!devcon::install_driver(to_wstring(infPath), &rebootRequired))
@@ -249,6 +257,14 @@ int main(int, char* argv[])
 			return EXIT_FAILURE;
 		}
 
+		const DWORD attribs = GetFileAttributesA(infPath.c_str());
+
+		if (attribs & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			std::cout << color(red) << "The given INF path is a directory, not a file" << std::endl;
+			return EXIT_FAILURE;
+		}
+
 		bool rebootRequired;
 
 		if (!devcon::uninstall_driver(to_wstring(infPath), &rebootRequired))
@@ -276,6 +292,14 @@ int main(int, char* argv[])
 		if (_access(binPath.c_str(), 0) != 0)
 		{
 			std::cout << color(red) << "The given binary file doesn't exist, is the path correct?" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		const DWORD attribs = GetFileAttributesA(binPath.c_str());
+
+		if (attribs & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			std::cout << color(red) << "The given binary path is a directory, not a file" << std::endl;
 			return EXIT_FAILURE;
 		}
 
