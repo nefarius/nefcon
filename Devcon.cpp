@@ -320,14 +320,19 @@ cleanup_DeviceInfo:
 
 bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequired)
 {
+	el::Logger* logger = el::Loggers::getLogger("default");
+
 	Newdev newdev;
 	BOOL reboot;
 
 	if (!newdev.pDiInstallDriverW)
 	{
+		logger->error("Couldn't find DiInstallDriverW export");
 		SetLastError(ERROR_INVALID_FUNCTION);
 		return false;
 	}
+
+	logger->verbose(1, "Invoking DiInstallDriverW");
 
 	const auto ret = newdev.pDiInstallDriverW(
 		nullptr,
@@ -335,6 +340,8 @@ bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequire
 		DIIRFLAG_FORCE_INF,
 		&reboot
 	);
+
+	logger->verbose(1, "DiInstallDriverW returned %v, reboot required: %v", ret, reboot);
 
 	if (rebootRequired)
 		*rebootRequired = reboot > 1;
@@ -344,14 +351,19 @@ bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequire
 
 bool devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequired)
 {
+	el::Logger* logger = el::Loggers::getLogger("default");
+
 	Newdev newdev;
 	BOOL reboot;
 
-	if (!newdev.pDiInstallDriverW)
+	if (!newdev.pDiUninstallDriverW)
 	{
+		logger->error("Couldn't find DiUninstallDriverW export");
 		SetLastError(ERROR_INVALID_FUNCTION);
 		return false;
 	}
+
+	logger->verbose(1, "Invoking DiUninstallDriverW");
 
 	const auto ret = newdev.pDiUninstallDriverW(
 		nullptr,
@@ -359,6 +371,8 @@ bool devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequi
 		0,
 		&reboot
 	);
+
+	logger->verbose(1, "DiUninstallDriverW returned %v, reboot required: %v", ret, reboot);
 
 	if (rebootRequired)
 		*rebootRequired = reboot > 1;
@@ -368,10 +382,12 @@ bool devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequi
 
 bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& filterName, DeviceClassFilterPosition::Value position)
 {
+	el::Logger* logger = el::Loggers::getLogger("default");
 	auto key = SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS);
 
 	if (INVALID_HANDLE_VALUE == key)
 	{
+		logger->error("SetupDiOpenClassRegKey failed with error code %v", GetLastError());
 		return false;
 	}
 
@@ -406,6 +422,7 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
 
 		if (status != ERROR_SUCCESS)
 		{
+			logger->error("RegQueryValueExW failed with status %v", status);
 			RegCloseKey(key);
 			SetLastError(status);
 			return false;
@@ -443,6 +460,7 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
 
 		if (status != ERROR_SUCCESS)
 		{
+			logger->error("RegSetValueExW failed with status %v", status);
 			RegCloseKey(key);
 			SetLastError(status);
 			return false;
@@ -473,6 +491,7 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
 
 		if (status != ERROR_SUCCESS)
 		{
+			logger->error("RegSetValueExW failed with status %v", status);
 			RegCloseKey(key);
 			SetLastError(status);
 			return false;
@@ -488,10 +507,12 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
 
 bool devcon::remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName, DeviceClassFilterPosition::Value position)
 {
+	el::Logger* logger = el::Loggers::getLogger("default");
 	auto key = SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS);
 
 	if (INVALID_HANDLE_VALUE == key)
 	{
+		logger->error("SetupDiOpenClassRegKey failed with error code %v", GetLastError());
 		return false;
 	}
 
@@ -526,6 +547,7 @@ bool devcon::remove_device_class_filter(const GUID* classGuid, const std::wstrin
 
 		if (status != ERROR_SUCCESS)
 		{
+			logger->error("RegQueryValueExW failed with status %v", status);
 			RegCloseKey(key);
 			SetLastError(status);
 			return false;
@@ -561,6 +583,7 @@ bool devcon::remove_device_class_filter(const GUID* classGuid, const std::wstrin
 
 		if (status != ERROR_SUCCESS)
 		{
+			logger->error("RegSetValueExW failed with status %v", status);
 			RegCloseKey(key);
 			SetLastError(status);
 			return false;
