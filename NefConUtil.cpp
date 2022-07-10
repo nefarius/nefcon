@@ -496,7 +496,7 @@ int main(int argc, char* argv[])
 
 	if (cmdl[{ "--remove-device-node" }])
 	{
-		logger->verbose(0, "Invoked --remove-device-node");
+		logger->verbose(1, "Invoked --remove-device-node");
 
 		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
 		{
@@ -560,7 +560,7 @@ int main(int argc, char* argv[])
 
 	if (cmdl[{ "--inf-default-install" }])
 	{
-		logger->verbose(0, "Invoked --inf-default-install");
+		logger->verbose(1, "Invoked --inf-default-install");
 
 		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
 		{

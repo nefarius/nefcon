@@ -606,7 +606,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
 
 	do
 	{
-		logger->verbose(0, "Enumerating");
+		logger->verbose(1, "Enumerating");
 
 		//
 		// Start building driver info
@@ -616,7 +616,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
 			spDevInfoData,
 			SPDIT_COMPATDRIVER
 		))
-		{			
+		{
 			err = GetLastError();
 			logger->error("SetupDiBuildDriverInfoList failed, error code: %v", err);
 			break;
@@ -723,8 +723,9 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
 		}
 
 		*rebootRequired = (drvNeedsReboot > 0) || (devNeedsReboot > 0);
+		ret = true;
 
-		logger->verbose(0, "Reboot required: %v", *rebootRequired);
+		logger->verbose(1, "Reboot required: %v", *rebootRequired);
 
 	} while (FALSE);
 
@@ -739,7 +740,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
 
 	SetLastError(err);
 
-	logger->verbose(0, "Freed memory, returning with %v and error code %v", ret, err);
+	logger->verbose(1, "Freed memory, returning with %v and error code %v", ret, err);
 
 	return ret;
 }
@@ -784,7 +785,7 @@ bool devcon::uninstall_device_and_driver(const GUID* classGuid, const std::wstri
 
 	for (DWORD i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &spDevInfoData); i++)
 	{
-		logger->verbose(0, "SetupDiEnumDeviceInfo with index %v", i);
+		logger->verbose(1, "SetupDiEnumDeviceInfo with index %v", i);
 
 		DWORD DataT;
 		LPWSTR p, buffer = nullptr;
@@ -801,12 +802,12 @@ bool devcon::uninstall_device_and_driver(const GUID* classGuid, const std::wstri
 		{
 			if (GetLastError() == ERROR_INVALID_DATA)
 			{
-				logger->verbose(0, "SetupDiGetDeviceRegistryProperty returned ERROR_INVALID_DATA");
+				logger->verbose(1, "SetupDiGetDeviceRegistryProperty returned ERROR_INVALID_DATA");
 				break;
 			}
 			if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
 			{
-				logger->verbose(0, "(Re-)allocating property buffer, bytes: %v", buffersize);
+				logger->verbose(1, "(Re-)allocating property buffer, bytes: %v", buffersize);
 				if (buffer)
 					LocalFree(buffer);
 				buffer = static_cast<wchar_t*>(LocalAlloc(LPTR, buffersize));
@@ -820,31 +821,31 @@ bool devcon::uninstall_device_and_driver(const GUID* classGuid, const std::wstri
 
 		if (GetLastError() == ERROR_INVALID_DATA)
 		{
-			logger->verbose(0, "SetupDiGetDeviceRegistryProperty returned ERROR_INVALID_DATA");
+			logger->verbose(1, "SetupDiGetDeviceRegistryProperty returned ERROR_INVALID_DATA");
 			continue;
 		}
 
-		logger->verbose(0, "Got Hardware ID property, starting enumeration");
+		logger->verbose(1, "Got Hardware ID property, starting enumeration");
 
 		//
 		// find device matching hardware ID
 		// 
 		for (p = buffer; p && *p && (p < &buffer[buffersize]); p += lstrlenW(p) + sizeof(TCHAR))
 		{
-			logger->verbose(0, "Enumerating ID: %v", p);
+			logger->verbose(1, "Enumerating ID: %v", std::wstring(p));
 
 			if (wstristr(p, hardwareId.c_str()))
 			{
-				logger->verbose(0, "Found match against %v, attempting removal", hardwareId);
+				logger->verbose(1, "Found match against %v, attempting removal", hardwareId);
 
 				succeeded = ::uninstall_device_and_driver(hDevInfo, &spDevInfoData, rebootRequired);
 				err = GetLastError();
-				logger->verbose(0, "Removal response: %v, error code: %v", succeeded, err);
+				logger->verbose(1, "Removal response: %v, error code: %v", succeeded, err);
 				break;
 			}
 		}
 
-		logger->verbose(0, "Done enumerating Hardware IDs");
+		logger->verbose(1, "Done enumerating Hardware IDs");
 
 		if (buffer)
 			LocalFree(buffer);
@@ -855,7 +856,7 @@ cleanup_DeviceInfo:
 	SetupDiDestroyDeviceInfoList(hDevInfo);
 	SetLastError(err);
 
-	logger->verbose(0, "Freed memory and returning with status: %v", succeeded);
+	logger->verbose(1, "Freed memory and returning with status: %v", succeeded);
 
 	return succeeded;
 }
