@@ -656,9 +656,9 @@ int main(int argc, char* argv[])
 #pragma region Print usage
 
 #if defined(NEFCON_WINMAIN)
-	std::cout << "usage: .\\nefconw [options]" << std::endl << std::endl;
+	std::cout << "usage: .\\nefconw [options] [logging]" << std::endl << std::endl;
 #else
-	std::cout << "usage: .\\nefconc [options]" << std::endl << std::endl;
+	std::cout << "usage: .\\nefconc [options] [logging]" << std::endl << std::endl;
 #endif
 	std::cout << "  options:" << std::endl;
 	std::cout << "    --install-driver           Invoke the installation of a given PNP driver" << std::endl;
@@ -693,6 +693,10 @@ int main(int argc, char* argv[])
 	std::cout << "    --inf-default-uninstall    Uninstalls an INF file with a [DefaultUninstall] section" << std::endl;
 	std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << std::endl;
 	std::cout << "    -v, --version              Display version of this utility" << std::endl;
+	std::cout << std::endl;
+	std::cout << "  logging:" << std::endl;
+	std::cout << "    --default-log-file=.\\log.txt       Write details of execution to a log file (optional)" << std::endl;
+	std::cout << "    --verbose                          Turn on verbose/diagnostic logging (optional)" << std::endl;
 	std::cout << std::endl;
 
 #pragma endregion
