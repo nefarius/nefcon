@@ -78,12 +78,27 @@ int main(int, char* argv[])
 	cmdl.parse(argv);
 #endif
 
+	BOOL isAdmin = FALSE;
 	std::string infPath, binPath, hwId, className, classGuid, serviceName, displayName, position;
 
 #pragma region Filter Driver actions
 
 	if (cmdl[{"--add-class-filter"}])
 	{
+		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+		{
+			std::cout << color(red) <<
+				"Failed to determine elevation status, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (!isAdmin)
+		{
+			std::cout << color(red) << "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled." << std::endl;
+			return EXIT_FAILURE;
+		}
+
 		if (!(cmdl({ "--position" }) >> position)) {
 			std::cout << color(red) << "Position missing" << std::endl;
 			return EXIT_FAILURE;
@@ -144,6 +159,20 @@ int main(int, char* argv[])
 
 	if (cmdl[{"--remove-class-filter"}])
 	{
+		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+		{
+			std::cout << color(red) <<
+				"Failed to determine elevation status, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (!isAdmin)
+		{
+			std::cout << color(red) << "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled." << std::endl;
+			return EXIT_FAILURE;
+		}
+
 		if (!(cmdl({ "--position" }) >> position)) {
 			std::cout << color(red) << "Position missing" << std::endl;
 			return EXIT_FAILURE;
@@ -206,6 +235,20 @@ int main(int, char* argv[])
 
 	if (cmdl[{ "--install-driver" }])
 	{
+		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+		{
+			std::cout << color(red) <<
+				"Failed to determine elevation status, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (!isAdmin)
+		{
+			std::cout << color(red) << "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled." << std::endl;
+			return EXIT_FAILURE;
+		}
+
 		infPath = cmdl({ "--inf-path" }).str();
 
 		if (infPath.empty()) {
@@ -244,6 +287,20 @@ int main(int, char* argv[])
 
 	if (cmdl[{ "--uninstall-driver" }])
 	{
+		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+		{
+			std::cout << color(red) <<
+				"Failed to determine elevation status, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (!isAdmin)
+		{
+			std::cout << color(red) << "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled." << std::endl;
+			return EXIT_FAILURE;
+		}
+
 		infPath = cmdl({ "--inf-path" }).str();
 
 		if (infPath.empty()) {
@@ -282,6 +339,20 @@ int main(int, char* argv[])
 
 	if (cmdl[{ "--create-driver-service" }])
 	{
+		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+		{
+			std::cout << color(red) <<
+				"Failed to determine elevation status, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (!isAdmin)
+		{
+			std::cout << color(red) << "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled." << std::endl;
+			return EXIT_FAILURE;
+		}
+
 		binPath = cmdl({ "--bin-path" }).str();
 
 		if (binPath.empty()) {
@@ -330,6 +401,20 @@ int main(int, char* argv[])
 
 	if (cmdl[{ "--remove-driver-service" }])
 	{
+		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+		{
+			std::cout << color(red) <<
+				"Failed to determine elevation status, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (!isAdmin)
+		{
+			std::cout << color(red) << "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled." << std::endl;
+			return EXIT_FAILURE;
+		}
+
 		if (!(cmdl({ "--service-name" }) >> serviceName)) {
 			std::cout << color(red) << "Service name missing" << std::endl;
 			return EXIT_FAILURE;
@@ -350,6 +435,20 @@ int main(int, char* argv[])
 
 	if (cmdl[{ "--create-device-node" }])
 	{
+		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+		{
+			std::cout << color(red) <<
+				"Failed to determine elevation status, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (!isAdmin)
+		{
+			std::cout << color(red) << "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled." << std::endl;
+			return EXIT_FAILURE;
+		}
+
 		if (!(cmdl({ "--hardware-id" }) >> hwId)) {
 			std::cout << color(red) << "Hardware ID missing" << std::endl;
 			return EXIT_FAILURE;
@@ -392,6 +491,20 @@ int main(int, char* argv[])
 
 	if (cmdl[{ "--remove-device-node" }])
 	{
+		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+		{
+			std::cout << color(red) <<
+				"Failed to determine elevation status, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (!isAdmin)
+		{
+			std::cout << color(red) << "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled." << std::endl;
+			return EXIT_FAILURE;
+		}
+
 		if (!(cmdl({ "--hardware-id" }) >> hwId)) {
 			std::cout << color(red) << "Hardware ID missing" << std::endl;
 			return EXIT_FAILURE;
@@ -431,6 +544,20 @@ int main(int, char* argv[])
 
 	if (cmdl[{ "--inf-default-install" }])
 	{
+		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+		{
+			std::cout << color(red) <<
+				"Failed to determine elevation status, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (!isAdmin)
+		{
+			std::cout << color(red) << "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled." << std::endl;
+			return EXIT_FAILURE;
+		}
+
 		infPath = cmdl({ "--inf-path" }).str();
 
 		if (infPath.empty()) {
