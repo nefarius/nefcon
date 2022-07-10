@@ -10,6 +10,7 @@
 #include <devguid.h>
 #include <newdev.h>
 #include <Shlwapi.h>
+#include <strsafe.h>
 
 //
 // STL
@@ -21,292 +22,292 @@
 // Helper function to build a multi-string from a vector<wstring>
 inline std::vector<wchar_t> BuildMultiString(const std::vector<std::wstring>& data)
 {
-    // Special case of the empty multi-string
-    if (data.empty())
-    {
-        // Build a vector containing just two NULs
-        return std::vector<wchar_t>(2, L'\0');
-    }
+	// Special case of the empty multi-string
+	if (data.empty())
+	{
+		// Build a vector containing just two NULs
+		return std::vector<wchar_t>(2, L'\0');
+	}
 
-    // Get the total length in wchar_ts of the multi-string
-    size_t totalLen = 0;
-    for (const auto& s : data)
-    {
-        // Add one to current string's length for the terminating NUL
-        totalLen += (s.length() + 1);
-    }
+	// Get the total length in wchar_ts of the multi-string
+	size_t totalLen = 0;
+	for (const auto& s : data)
+	{
+		// Add one to current string's length for the terminating NUL
+		totalLen += (s.length() + 1);
+	}
 
-    // Add one for the last NUL terminator (making the whole structure double-NUL terminated)
-    totalLen++;
+	// Add one for the last NUL terminator (making the whole structure double-NUL terminated)
+	totalLen++;
 
-    // Allocate a buffer to store the multi-string
-    std::vector<wchar_t> multiString;
-    multiString.reserve(totalLen);
+	// Allocate a buffer to store the multi-string
+	std::vector<wchar_t> multiString;
+	multiString.reserve(totalLen);
 
-    // Copy the single strings into the multi-string
-    for (const auto& s : data)
-    {      
-        multiString.insert(multiString.end(), s.begin(), s.end());
-        
-        // Don't forget to NUL-terminate the current string
-        multiString.push_back(L'\0');
-    }
+	// Copy the single strings into the multi-string
+	for (const auto& s : data)
+	{
+		multiString.insert(multiString.end(), s.begin(), s.end());
 
-    // Add the last NUL-terminator
-    multiString.push_back(L'\0');
+		// Don't forget to NUL-terminate the current string
+		multiString.push_back(L'\0');
+	}
 
-    return multiString;
+	// Add the last NUL-terminator
+	multiString.push_back(L'\0');
+
+	return multiString;
 }
 
 auto devcon::create(const std::wstring& className, const GUID* classGuid, const std::wstring& hardwareId) -> bool
 {
 	const auto deviceInfoSet = SetupDiCreateDeviceInfoList(classGuid, nullptr);
 
-    if (INVALID_HANDLE_VALUE == deviceInfoSet)
-        return false;
+	if (INVALID_HANDLE_VALUE == deviceInfoSet)
+		return false;
 
-    SP_DEVINFO_DATA deviceInfoData;
-    deviceInfoData.cbSize = sizeof(deviceInfoData);
+	SP_DEVINFO_DATA deviceInfoData;
+	deviceInfoData.cbSize = sizeof(deviceInfoData);
 
 	const auto cdiRet = SetupDiCreateDeviceInfoW(
-        deviceInfoSet,
-        className.c_str(),
-        classGuid,
-        nullptr,
-        nullptr,
-        DICD_GENERATE_ID,
-        &deviceInfoData
-    );
+		deviceInfoSet,
+		className.c_str(),
+		classGuid,
+		nullptr,
+		nullptr,
+		DICD_GENERATE_ID,
+		&deviceInfoData
+	);
 
-    if (!cdiRet)
-    {
-        SetupDiDestroyDeviceInfoList(deviceInfoSet);
-        return false;
-    }
+	if (!cdiRet)
+	{
+		SetupDiDestroyDeviceInfoList(deviceInfoSet);
+		return false;
+	}
 
 	const auto sdrpRet = SetupDiSetDeviceRegistryPropertyW(
-        deviceInfoSet,
-        &deviceInfoData,
-        SPDRP_HARDWAREID,
-        (const PBYTE)hardwareId.c_str(),
-        static_cast<DWORD>(hardwareId.size() * sizeof(WCHAR))
-    );
+		deviceInfoSet,
+		&deviceInfoData,
+		SPDRP_HARDWAREID,
+		(const PBYTE)hardwareId.c_str(),
+		static_cast<DWORD>(hardwareId.size() * sizeof(WCHAR))
+	);
 
-    if (!sdrpRet)
-    {
-        SetupDiDestroyDeviceInfoList(deviceInfoSet);
-        return false;
-    }
+	if (!sdrpRet)
+	{
+		SetupDiDestroyDeviceInfoList(deviceInfoSet);
+		return false;
+	}
 
 	const auto cciRet = SetupDiCallClassInstaller(
-        DIF_REGISTERDEVICE,
-        deviceInfoSet,
-        &deviceInfoData
-    );
+		DIF_REGISTERDEVICE,
+		deviceInfoSet,
+		&deviceInfoData
+	);
 
-    if (!cciRet)
-    {
-        SetupDiDestroyDeviceInfoList(deviceInfoSet);
-        return false;
-    }
+	if (!cciRet)
+	{
+		SetupDiDestroyDeviceInfoList(deviceInfoSet);
+		return false;
+	}
 
-    SetupDiDestroyDeviceInfoList(deviceInfoSet);
+	SetupDiDestroyDeviceInfoList(deviceInfoSet);
 
-    return true;
+	return true;
 }
 
 bool devcon::restart_bth_usb_device()
 {
-    DWORD i, err;
-    bool found = false, succeeded = false;
+	DWORD i, err;
+	bool found = false, succeeded = false;
 
-    HDEVINFO hDevInfo;
-    SP_DEVINFO_DATA spDevInfoData;
+	HDEVINFO hDevInfo;
+	SP_DEVINFO_DATA spDevInfoData;
 
-    hDevInfo = SetupDiGetClassDevs(
-        &GUID_DEVCLASS_BLUETOOTH,
-        nullptr, 
-        nullptr, 
-        DIGCF_PRESENT
-    );
-    if (hDevInfo == INVALID_HANDLE_VALUE)
-    {
-        return succeeded;
-    }
+	hDevInfo = SetupDiGetClassDevs(
+		&GUID_DEVCLASS_BLUETOOTH,
+		nullptr,
+		nullptr,
+		DIGCF_PRESENT
+	);
+	if (hDevInfo == INVALID_HANDLE_VALUE)
+	{
+		return succeeded;
+	}
 
-    spDevInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-    for (i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &spDevInfoData); i++)
-    {
-        DWORD DataT;
-        LPTSTR p, buffer = nullptr;
-        DWORD buffersize = 0;
+	spDevInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+	for (i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &spDevInfoData); i++)
+	{
+		DWORD DataT;
+		LPTSTR p, buffer = nullptr;
+		DWORD buffersize = 0;
 
-        // get all devices info
-        while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-            &spDevInfoData,
-            SPDRP_ENUMERATOR_NAME,
-            &DataT,
-            (PBYTE)buffer,
-            buffersize,
-            &buffersize))
-        {
-            if (GetLastError() == ERROR_INVALID_DATA)
-            {
-                break;
-            }
-            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-            {
-                if (buffer)
-                    LocalFree(buffer);
-                buffer = (wchar_t*)LocalAlloc(LPTR, buffersize);
-            }
-            else
-            {
-                goto cleanup_DeviceInfo;
-            }
-        }
+		// get all devices info
+		while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
+			&spDevInfoData,
+			SPDRP_ENUMERATOR_NAME,
+			&DataT,
+			(PBYTE)buffer,
+			buffersize,
+			&buffersize))
+		{
+			if (GetLastError() == ERROR_INVALID_DATA)
+			{
+				break;
+			}
+			if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+			{
+				if (buffer)
+					LocalFree(buffer);
+				buffer = (wchar_t*)LocalAlloc(LPTR, buffersize);
+			}
+			else
+			{
+				goto cleanup_DeviceInfo;
+			}
+		}
 
-        if (GetLastError() == ERROR_INVALID_DATA)
-            continue;
+		if (GetLastError() == ERROR_INVALID_DATA)
+			continue;
 
-        //find device with enumerator name "USB"
-        for (p = buffer; *p && (p < &buffer[buffersize]); p += lstrlen(p) + sizeof(TCHAR))
-        {
-            if (!_tcscmp(TEXT("USB"), p))
-            {
-                found = true;
-                break;
-            }
-        }
+		//find device with enumerator name "USB"
+		for (p = buffer; *p && (p < &buffer[buffersize]); p += lstrlen(p) + sizeof(TCHAR))
+		{
+			if (!_tcscmp(TEXT("USB"), p))
+			{
+				found = true;
+				break;
+			}
+		}
 
-        if (buffer)
-            LocalFree(buffer);
+		if (buffer)
+			LocalFree(buffer);
 
-        // if device found restart
-        if (found)
-        {
-            if(!SetupDiRestartDevices(hDevInfo, &spDevInfoData))
-            {
-	            err = GetLastError();
-            	break;
-            }
+		// if device found restart
+		if (found)
+		{
+			if (!SetupDiRestartDevices(hDevInfo, &spDevInfoData))
+			{
+				err = GetLastError();
+				break;
+			}
 
-            succeeded = true;
-        	
-        	break;
-        }
-    }
+			succeeded = true;
+
+			break;
+		}
+	}
 
 cleanup_DeviceInfo:
-    err = GetLastError();
-    SetupDiDestroyDeviceInfoList(hDevInfo);
-    SetLastError(err);
+	err = GetLastError();
+	SetupDiDestroyDeviceInfoList(hDevInfo);
+	SetLastError(err);
 
-    return succeeded;
+	return succeeded;
 }
 
 bool devcon::enable_disable_bth_usb_device(bool state)
 {
-    DWORD i, err;
-    bool found = false, succeeded = false;
+	DWORD i, err;
+	bool found = false, succeeded = false;
 
-    HDEVINFO hDevInfo;
-    SP_DEVINFO_DATA spDevInfoData;
+	HDEVINFO hDevInfo;
+	SP_DEVINFO_DATA spDevInfoData;
 
-    hDevInfo = SetupDiGetClassDevs(
-        &GUID_DEVCLASS_BLUETOOTH,
-        nullptr, 
-        nullptr, 
-        DIGCF_PRESENT
-    );
-    if (hDevInfo == INVALID_HANDLE_VALUE)
-    {
-        return succeeded;
-    }
+	hDevInfo = SetupDiGetClassDevs(
+		&GUID_DEVCLASS_BLUETOOTH,
+		nullptr,
+		nullptr,
+		DIGCF_PRESENT
+	);
+	if (hDevInfo == INVALID_HANDLE_VALUE)
+	{
+		return succeeded;
+	}
 
-    spDevInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-    for (i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &spDevInfoData); i++)
-    {
-        DWORD DataT;
-        LPTSTR p, buffer = nullptr;
-        DWORD buffersize = 0;
+	spDevInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+	for (i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &spDevInfoData); i++)
+	{
+		DWORD DataT;
+		LPTSTR p, buffer = nullptr;
+		DWORD buffersize = 0;
 
-        // get all devices info
-        while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-            &spDevInfoData,
-            SPDRP_ENUMERATOR_NAME,
-            &DataT,
-            (PBYTE)buffer,
-            buffersize,
-            &buffersize))
-        {
-            if (GetLastError() == ERROR_INVALID_DATA)
-            {
-                break;
-            }
-            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-            {
-                if (buffer)
-                    LocalFree(buffer);
-                buffer = (wchar_t*)LocalAlloc(LPTR, buffersize);
-            }
-            else
-            {
-                goto cleanup_DeviceInfo;
-            }
-        }
+		// get all devices info
+		while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
+			&spDevInfoData,
+			SPDRP_ENUMERATOR_NAME,
+			&DataT,
+			(PBYTE)buffer,
+			buffersize,
+			&buffersize))
+		{
+			if (GetLastError() == ERROR_INVALID_DATA)
+			{
+				break;
+			}
+			if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+			{
+				if (buffer)
+					LocalFree(buffer);
+				buffer = (wchar_t*)LocalAlloc(LPTR, buffersize);
+			}
+			else
+			{
+				goto cleanup_DeviceInfo;
+			}
+		}
 
-        if (GetLastError() == ERROR_INVALID_DATA)
-            continue;
+		if (GetLastError() == ERROR_INVALID_DATA)
+			continue;
 
-        //find device with enumerator name "USB"
-        for (p = buffer; *p && (p < &buffer[buffersize]); p += lstrlen(p) + sizeof(TCHAR))
-        {
-            if (!_tcscmp(TEXT("USB"), p))
-            {
-                found = true;
-                break;
-            }
-        }
+		//find device with enumerator name "USB"
+		for (p = buffer; *p && (p < &buffer[buffersize]); p += lstrlen(p) + sizeof(TCHAR))
+		{
+			if (!_tcscmp(TEXT("USB"), p))
+			{
+				found = true;
+				break;
+			}
+		}
 
-        if (buffer)
-            LocalFree(buffer);
+		if (buffer)
+			LocalFree(buffer);
 
-        // if device found change it's state
-        if (found)
-        {
-            SP_PROPCHANGE_PARAMS params;
+		// if device found change it's state
+		if (found)
+		{
+			SP_PROPCHANGE_PARAMS params;
 
-            params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
-            params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
-            params.Scope = DICS_FLAG_GLOBAL;
-            params.StateChange = (state) ? DICS_ENABLE : DICS_DISABLE;
+			params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
+			params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
+			params.Scope = DICS_FLAG_GLOBAL;
+			params.StateChange = (state) ? DICS_ENABLE : DICS_DISABLE;
 
-            // setup proper parameters            
-            if (!SetupDiSetClassInstallParams(hDevInfo, &spDevInfoData, &params.ClassInstallHeader, sizeof(params)))
-            {
-                err = GetLastError();
-            }
-            else
-            {
-                // use parameters
-                if (!SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, hDevInfo, &spDevInfoData))
-                {
-                    err = GetLastError(); // error here  
-                }
-                else { succeeded = true; }
-            }
+			// setup proper parameters            
+			if (!SetupDiSetClassInstallParams(hDevInfo, &spDevInfoData, &params.ClassInstallHeader, sizeof(params)))
+			{
+				err = GetLastError();
+			}
+			else
+			{
+				// use parameters
+				if (!SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, hDevInfo, &spDevInfoData))
+				{
+					err = GetLastError(); // error here  
+				}
+				else { succeeded = true; }
+			}
 
-            break;
-        }
-    }
+			break;
+		}
+	}
 
 cleanup_DeviceInfo:
-    err = GetLastError();
-    SetupDiDestroyDeviceInfoList(hDevInfo);
-    SetLastError(err);
+	err = GetLastError();
+	SetupDiDestroyDeviceInfoList(hDevInfo);
+	SetLastError(err);
 
-    return succeeded;
+	return succeeded;
 }
 
 bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequired)
@@ -319,7 +320,7 @@ bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequire
 		SetLastError(ERROR_INVALID_FUNCTION);
 		return false;
 	}
-	
+
 	const auto ret = newdev.pDiInstallDriverW(
 		nullptr,
 		fullInfPath.c_str(),
@@ -367,9 +368,9 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
 	}
 
 	LPCWSTR filterValue = (position == DeviceClassFilterPosition::Lower) ? L"LowerFilters" : L"UpperFilters";
-    DWORD type, size;
+	DWORD type, size;
 	std::vector<std::wstring> filters;
-	
+
 	auto status = RegQueryValueExW(
 		key,
 		filterValue,
@@ -587,7 +588,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
 		SetLastError(ERROR_INVALID_FUNCTION);
 		return false;
 	}
-	
+
 	SP_DRVINFO_DATA_W drvInfoData;
 	drvInfoData.cbSize = sizeof(drvInfoData);
 
@@ -703,8 +704,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
 		}
 
 		*rebootRequired = (drvNeedsReboot > 0) || (devNeedsReboot > 0);
-	}
-	while (FALSE);
+	} while (FALSE);
 
 	if (pDrvInfoDetailData)
 		free(pDrvInfoDetailData);
@@ -737,80 +737,139 @@ static PWSTR wstristr(PCWSTR haystack, PCWSTR needle) {
 
 bool devcon::uninstall_device_and_driver(const GUID* classGuid, const std::wstring& hardwareId, bool* rebootRequired)
 {
-    DWORD err = ERROR_SUCCESS;
-    bool succeeded = false;
+	DWORD err = ERROR_SUCCESS;
+	bool succeeded = false;
 
-    HDEVINFO hDevInfo;
-    SP_DEVINFO_DATA spDevInfoData;
+	HDEVINFO hDevInfo;
+	SP_DEVINFO_DATA spDevInfoData;
 
-    hDevInfo = SetupDiGetClassDevs(
-        classGuid,
-        nullptr, 
-        nullptr, 
-        DIGCF_PRESENT
-    );
-    if (hDevInfo == INVALID_HANDLE_VALUE)
-    {
-        return succeeded;
-    }
+	hDevInfo = SetupDiGetClassDevs(
+		classGuid,
+		nullptr,
+		nullptr,
+		DIGCF_PRESENT
+	);
+	if (hDevInfo == INVALID_HANDLE_VALUE)
+	{
+		return succeeded;
+	}
 
-    spDevInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-	
-    for (DWORD i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &spDevInfoData); i++)
-    {
-        DWORD DataT;
-        LPWSTR p, buffer = nullptr;
-        DWORD buffersize = 0;
+	spDevInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
 
-        // get all devices info
-        while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-            &spDevInfoData,
-            SPDRP_HARDWAREID,
-            &DataT,
-            reinterpret_cast<PBYTE>(buffer),
-            buffersize,
-            &buffersize))
-        {
-            if (GetLastError() == ERROR_INVALID_DATA)
-            {
-                break;
-            }
-            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-            {
-                if (buffer)
-                    LocalFree(buffer);
-                buffer = static_cast<wchar_t*>(LocalAlloc(LPTR, buffersize));
-            }
-            else
-            {
-                goto cleanup_DeviceInfo;
-            }
-        }
+	for (DWORD i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &spDevInfoData); i++)
+	{
+		DWORD DataT;
+		LPWSTR p, buffer = nullptr;
+		DWORD buffersize = 0;
 
-        if (GetLastError() == ERROR_INVALID_DATA)
-            continue;
+		// get all devices info
+		while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
+			&spDevInfoData,
+			SPDRP_HARDWAREID,
+			&DataT,
+			reinterpret_cast<PBYTE>(buffer),
+			buffersize,
+			&buffersize))
+		{
+			if (GetLastError() == ERROR_INVALID_DATA)
+			{
+				break;
+			}
+			if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+			{
+				if (buffer)
+					LocalFree(buffer);
+				buffer = static_cast<wchar_t*>(LocalAlloc(LPTR, buffersize));
+			}
+			else
+			{
+				goto cleanup_DeviceInfo;
+			}
+		}
 
-        //
-        // find device matching hardware ID
-        // 
-        for (p = buffer; p && *p && (p < &buffer[buffersize]); p += lstrlenW(p) + sizeof(TCHAR))
-        {
-	        if (wstristr(p, hardwareId.c_str()))
-	        {
-		        succeeded = ::uninstall_device_and_driver(hDevInfo, &spDevInfoData, rebootRequired);
-		        err = GetLastError();
-		        break;
-	        }
-        }
+		if (GetLastError() == ERROR_INVALID_DATA)
+			continue;
 
-        if (buffer)
-	        LocalFree(buffer);
-    }
+		//
+		// find device matching hardware ID
+		// 
+		for (p = buffer; p && *p && (p < &buffer[buffersize]); p += lstrlenW(p) + sizeof(TCHAR))
+		{
+			if (wstristr(p, hardwareId.c_str()))
+			{
+				succeeded = ::uninstall_device_and_driver(hDevInfo, &spDevInfoData, rebootRequired);
+				err = GetLastError();
+				break;
+			}
+		}
+
+		if (buffer)
+			LocalFree(buffer);
+	}
 
 cleanup_DeviceInfo:
-    err = GetLastError();
-    SetupDiDestroyDeviceInfoList(hDevInfo);
-    SetLastError(err);
+	err = GetLastError();
+	SetupDiDestroyDeviceInfoList(hDevInfo);
+	SetLastError(err);
 
-    return succeeded;
+	return succeeded;
+}
+
+bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRequired)
+{
+	uint32_t errCode = ERROR_SUCCESS;
+	SYSTEM_INFO sysInfo;
+	HINF hInf = INVALID_HANDLE_VALUE;
+	WCHAR InfSectionWithExt[255];
+	WCHAR pszDest[280];
+	BOOLEAN defaultSection = FALSE;
+
+	GetNativeSystemInfo(&sysInfo);
+
+	hInf = SetupOpenInfFileW(fullInfPath.c_str(), nullptr, INF_STYLE_WIN4, nullptr);
+
+	do
+	{
+		if (hInf == INVALID_HANDLE_VALUE)
+		{
+			errCode = GetLastError();
+			break;
+		}
+
+		if (SetupDiGetActualSectionToInstallW(
+			hInf,
+			L"DefaultInstall",
+			InfSectionWithExt,
+			0xFFu,
+			reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
+			nullptr)
+			&& SetupFindFirstLineW(hInf, InfSectionWithExt, nullptr, reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
+		{
+			defaultSection = TRUE;
+
+			if (StringCchPrintfW(pszDest, 280ui64, L"DefaultInstall 132 %ws", fullInfPath.c_str()) < 0)
+			{
+				errCode = GetLastError();
+				break;
+			}
+
+			InstallHinfSectionW(nullptr, nullptr, pszDest, 0);
+		}
+
+		if (!SetupFindFirstLineW(hInf, L"Manufacturer", nullptr, reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
+		{
+			if (!defaultSection)
+				errCode = ERROR_SECTION_NOT_FOUND;
+			break;
+		}
+
+	} while (FALSE);
+
+	if (hInf != INVALID_HANDLE_VALUE)
+	{
+		SetupCloseInfFile(hInf);
+	}
+
+	SetLastError(errCode);
+	return errCode == ERROR_SUCCESS;
 }

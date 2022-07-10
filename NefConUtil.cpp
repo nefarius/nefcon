@@ -429,6 +429,44 @@ int main(int, char* argv[])
 		return (rebootRequired) ? ERROR_RESTART_APPLICATION : EXIT_SUCCESS;
 	}
 
+	if (cmdl[{ "--inf-default-install" }])
+	{
+		infPath = cmdl({ "--inf-path" }).str();
+
+		if (infPath.empty()) {
+			std::cout << color(red) << "INF path missing" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (_access(infPath.c_str(), 0) != 0)
+		{
+			std::cout << color(red) << "The given INF file doesn't exist, is the path correct?" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		const DWORD attribs = GetFileAttributesA(infPath.c_str());
+
+		if (attribs & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			std::cout << color(red) << "The given INF path is a directory, not a file" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		bool rebootRequired;
+
+		if (!devcon::inf_default_install(to_wstring(infPath), &rebootRequired))
+		{
+			std::cout << color(red) <<
+				"Failed to install INF file, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return GetLastError();
+		}
+
+		std::cout << color(green) << "INF file installed successfully" << std::endl;
+
+		return (rebootRequired) ? ERROR_RESTART_APPLICATION : EXIT_SUCCESS;
+	}
+
 #pragma endregion
 
 	if (cmdl[{ "-v", "--version" }])
@@ -477,6 +515,8 @@ int main(int, char* argv[])
 	std::cout << "      --display-name           The friendly name of the service (required)" << std::endl;
 	std::cout << "    --remove-driver-service    Removes an existing kernel driver service" << std::endl;
 	std::cout << "      --service-name           The driver service name to remove (required)" << std::endl;
+	std::cout << "    --inf-default-install      Installs an INF file with a [DefaultInstall] section" << std::endl;
+	std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << std::endl;
 	std::cout << "    -v, --version              Display version of this utility" << std::endl;
 	std::cout << std::endl;
 
