@@ -953,12 +953,15 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
 		SetupCloseInfFile(hInf);
 	}
 
+	logger->verbose(1, "Returning with error code %v", errCode);
+
 	SetLastError(errCode);
 	return errCode == ERROR_SUCCESS;
 }
 
 bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* rebootRequired)
 {
+	el::Logger* logger = el::Loggers::getLogger("default");
 	uint32_t errCode = ERROR_SUCCESS;
 	SYSTEM_INFO sysInfo;
 	HINF hInf = INVALID_HANDLE_VALUE;
@@ -974,12 +977,13 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
 		if (hInf == INVALID_HANDLE_VALUE)
 		{
 			errCode = GetLastError();
+			logger->error("SetupOpenInfFileW failed with error code %v", errCode);
 			break;
 		}
 
 		if (SetupDiGetActualSectionToInstallW(
 			hInf,
-			L"DefaultInstall",
+			L"DefaultUninstall",
 			InfSectionWithExt,
 			0xFFu,
 			reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
@@ -987,15 +991,21 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
 			&& SetupFindFirstLineW(hInf, InfSectionWithExt, nullptr, reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
 		{
 			if (StringCchPrintfW(pszDest, 280ui64, L"DefaultUninstall 132 %ws", fullInfPath.c_str()) < 0)
-			{
+			{				
 				errCode = GetLastError();
+				logger->error("StringCchPrintfW failed with error code %v", errCode);
 				break;
 			}
 
+			logger->verbose(1, "Calling InstallHinfSectionW");
+
 			InstallHinfSectionW(nullptr, nullptr, pszDest, 0);
+
+			logger->verbose(1, "InstallHinfSectionW finished");
 		}
 		else
 		{
+			logger->error("No DefaultUninstall section found");
 			errCode = ERROR_SECTION_NOT_FOUND;
 		}
 
@@ -1005,6 +1015,8 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
 	{
 		SetupCloseInfFile(hInf);
 	}
+
+	logger->verbose(1, "Returning with error code %v", errCode);
 
 	SetLastError(errCode);
 	return errCode == ERROR_SUCCESS;
