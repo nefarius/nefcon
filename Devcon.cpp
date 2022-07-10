@@ -912,8 +912,13 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
 
 		if (!SetupFindFirstLineW(hInf, L"Manufacturer", nullptr, reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
 		{
+			logger->verbose(1, "No Manufacturer section found");
+
 			if (!defaultSection)
+			{
+				logger->error("No DefaultInstall and no Manufacturer section, can't continue");
 				errCode = ERROR_SECTION_NOT_FOUND;
+			}
 			break;
 		}
 
