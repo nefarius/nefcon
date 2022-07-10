@@ -190,8 +190,7 @@ std::string winapi::GetVersionFromFile(std::string FilePath)
 						versionString
 							<< static_cast<ULONG>(HIWORD(verInfo->dwProductVersionMS)) << "."
 							<< static_cast<ULONG>(LOWORD(verInfo->dwProductVersionMS)) << "."
-							<< static_cast<ULONG>(HIWORD(verInfo->dwProductVersionLS)) << "."
-							<< static_cast<ULONG>(LOWORD(verInfo->dwProductVersionLS));
+							<< static_cast<ULONG>(HIWORD(verInfo->dwProductVersionLS));
 					}
 				}
 			}
