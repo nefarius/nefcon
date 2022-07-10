@@ -2,7 +2,6 @@
 
 #include <guiddef.h>
 #include <string>
-#include <stdint.h>
 
 namespace devcon
 {
