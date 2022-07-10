@@ -594,6 +594,58 @@ int main(int, char* argv[])
 		return (rebootRequired) ? ERROR_RESTART_APPLICATION : EXIT_SUCCESS;
 	}
 
+	if (cmdl[{ "--inf-default-uninstall" }])
+	{
+		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+		{
+			std::cout << color(red) <<
+				"Failed to determine elevation status, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (!isAdmin)
+		{
+			std::cout << color(red) << "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled." << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		infPath = cmdl({ "--inf-path" }).str();
+
+		if (infPath.empty()) {
+			std::cout << color(red) << "INF path missing" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (_access(infPath.c_str(), 0) != 0)
+		{
+			std::cout << color(red) << "The given INF file doesn't exist, is the path correct?" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		const DWORD attribs = GetFileAttributesA(infPath.c_str());
+
+		if (attribs & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			std::cout << color(red) << "The given INF path is a directory, not a file" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		bool rebootRequired = false;
+
+		if (!devcon::inf_default_uninstall(to_wstring(infPath), &rebootRequired))
+		{
+			std::cout << color(red) <<
+				"Failed to uninstall INF file, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return GetLastError();
+		}
+
+		std::cout << color(green) << "INF file uninstalled successfully" << std::endl;
+
+		return (rebootRequired) ? ERROR_RESTART_APPLICATION : EXIT_SUCCESS;
+	}
+
 #pragma endregion
 
 	if (cmdl[{ "-v", "--version" }])
@@ -644,6 +696,8 @@ int main(int, char* argv[])
 	std::cout << "      --service-name           The driver service name to remove (required)" << std::endl;
 	std::cout << "    --inf-default-install      Installs an INF file with a [DefaultInstall] section" << std::endl;
 	std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << std::endl;
+	std::cout << "    --inf-default-uninstall    Uninstalls an INF file with a [DefaultUninstall] section" << std::endl;
+	std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << std::endl;
 	std::cout << "    -v, --version              Display version of this utility" << std::endl;
 	std::cout << std::endl;
 

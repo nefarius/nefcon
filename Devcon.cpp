@@ -873,3 +873,56 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
 	SetLastError(errCode);
 	return errCode == ERROR_SUCCESS;
 }
+
+bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* rebootRequired)
+{
+	uint32_t errCode = ERROR_SUCCESS;
+	SYSTEM_INFO sysInfo;
+	HINF hInf = INVALID_HANDLE_VALUE;
+	WCHAR InfSectionWithExt[255];
+	WCHAR pszDest[280];
+
+	GetNativeSystemInfo(&sysInfo);
+
+	hInf = SetupOpenInfFileW(fullInfPath.c_str(), nullptr, INF_STYLE_WIN4, nullptr);
+
+	do
+	{
+		if (hInf == INVALID_HANDLE_VALUE)
+		{
+			errCode = GetLastError();
+			break;
+		}
+
+		if (SetupDiGetActualSectionToInstallW(
+			hInf,
+			L"DefaultInstall",
+			InfSectionWithExt,
+			0xFFu,
+			reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
+			nullptr)
+			&& SetupFindFirstLineW(hInf, InfSectionWithExt, nullptr, reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
+		{
+			if (StringCchPrintfW(pszDest, 280ui64, L"DefaultUninstall 132 %ws", fullInfPath.c_str()) < 0)
+			{
+				errCode = GetLastError();
+				break;
+			}
+
+			InstallHinfSectionW(nullptr, nullptr, pszDest, 0);
+		}
+		else
+		{
+			errCode = ERROR_SECTION_NOT_FOUND;
+		}
+
+	} while (FALSE);
+
+	if (hInf != INVALID_HANDLE_VALUE)
+	{
+		SetupCloseInfFile(hInf);
+	}
+
+	SetLastError(errCode);
+	return errCode == ERROR_SUCCESS;
+}
