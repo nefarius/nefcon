@@ -17,4 +17,6 @@ namespace winapi
     std::string GetVersionFromFile(std::string FilePath);
 
     std::string GetImageBasePath();
+
+    DWORD IsAppRunningAsAdminMode(PBOOL IsAdmin);
 };
