@@ -476,12 +476,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Devcon.cpp" />
+    <ClCompile Include="easylogging++.cc" />
     <ClCompile Include="NefConSetup.cpp" />
     <ClCompile Include="NefConUtil.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="argh.h" />
     <ClInclude Include="Devcon.h" />
+    <ClInclude Include="easylogging++.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="LibraryHelper.hpp" />
     <ClInclude Include="NefConSetup.h" />

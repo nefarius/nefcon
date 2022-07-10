@@ -2,6 +2,7 @@
 
 using namespace colorwin;
 
+INITIALIZE_EASYLOGGINGPP
 
 //
 // Enable Visual Styles for message box
@@ -32,7 +33,7 @@ int WINAPI WinMain(
 	_In_ int nShowCmd
 )
 #else
-int main(int, char* argv[])
+int main(int argc, char* argv[])
 #endif
 {
 	argh::parser cmdl;
@@ -73,10 +74,14 @@ int main(int, char* argv[])
 
 	argv.push_back(nullptr);
 
+	START_EASYLOGGINGPP(nArgs, &argv[0]);
 	cmdl.parse(nArgs, &argv[0]);
 #else
+	START_EASYLOGGINGPP(argc, argv);
 	cmdl.parse(argv);
 #endif
+
+	el::Logger* logger = el::Loggers::getLogger("default");
 
 	BOOL isAdmin = FALSE;
 	std::string infPath, binPath, hwId, className, classGuid, serviceName, displayName, position;
@@ -428,7 +433,7 @@ int main(int, char* argv[])
 			return GetLastError();
 		}
 
-		std::cout << color(green) << "Driver service created successfully" << std::endl;
+		std::cout << color(green) << "Driver service removed successfully" << std::endl;
 
 		return EXIT_SUCCESS;
 	}
@@ -491,8 +496,12 @@ int main(int, char* argv[])
 
 	if (cmdl[{ "--remove-device-node" }])
 	{
+		logger->verbose(0, "Invoked --remove-device-node");
+
 		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
 		{
+			logger->error("Failed to determine elevation status, error: %v",
+				winapi::GetLastErrorStdStr());
 			std::cout << color(red) <<
 				"Failed to determine elevation status, error: "
 				<< winapi::GetLastErrorStdStr() << std::endl;
@@ -501,16 +510,19 @@ int main(int, char* argv[])
 
 		if (!isAdmin)
 		{
+			logger->error("This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled.");
 			std::cout << color(red) << "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled." << std::endl;
 			return EXIT_FAILURE;
 		}
 
 		if (!(cmdl({ "--hardware-id" }) >> hwId)) {
+			logger->error("Hardware ID missing");
 			std::cout << color(red) << "Hardware ID missing" << std::endl;
 			return EXIT_FAILURE;
 		}
 
 		if (!(cmdl({ "--class-guid" }) >> classGuid)) {
+			logger->error("Device Class GUID missing");
 			std::cout << color(red) << "Device Class GUID missing" << std::endl;
 			return EXIT_FAILURE;
 		}
@@ -521,6 +533,7 @@ int main(int, char* argv[])
 
 		if (UuidFromStringA(reinterpret_cast<RPC_CSTR>(&classGuid[0]), &clID) == RPC_S_INVALID_STRING_UUID)
 		{
+			logger->error("Device Class GUID format invalid, expected format (no brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
 			std::cout << color(red) << "Device Class GUID format invalid, expected format (no brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" << std::endl;
 			return EXIT_FAILURE;
 		}
@@ -531,12 +544,15 @@ int main(int, char* argv[])
 
 		if (!ret)
 		{
+			logger->error("Failed to delete device node, error: %v",
+				winapi::GetLastErrorStdStr());
 			std::cout << color(red) <<
 				"Failed to delete device node, error: "
 				<< winapi::GetLastErrorStdStr() << std::endl;
 			return GetLastError();
 		}
 
+		logger->info("Device and driver removed successfully");
 		std::cout << color(green) << "Device and driver removed successfully" << std::endl;
 
 		return (rebootRequired) ? ERROR_RESTART_APPLICATION : EXIT_SUCCESS;
@@ -544,8 +560,12 @@ int main(int, char* argv[])
 
 	if (cmdl[{ "--inf-default-install" }])
 	{
+		logger->verbose(0, "Invoked --inf-default-install");
+
 		if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
 		{
+			logger->error("Failed to determine elevation status, error: %v",
+				winapi::GetLastErrorStdStr());
 			std::cout << color(red) <<
 				"Failed to determine elevation status, error: "
 				<< winapi::GetLastErrorStdStr() << std::endl;
@@ -554,6 +574,7 @@ int main(int, char* argv[])
 
 		if (!isAdmin)
 		{
+			logger->error("This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled.");
 			std::cout << color(red) << "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled." << std::endl;
 			return EXIT_FAILURE;
 		}
@@ -561,12 +582,14 @@ int main(int, char* argv[])
 		infPath = cmdl({ "--inf-path" }).str();
 
 		if (infPath.empty()) {
+			logger->error("INF path missing");
 			std::cout << color(red) << "INF path missing" << std::endl;
 			return EXIT_FAILURE;
 		}
 
 		if (_access(infPath.c_str(), 0) != 0)
 		{
+			logger->error("The given INF file doesn't exist, is the path correct?");
 			std::cout << color(red) << "The given INF file doesn't exist, is the path correct?" << std::endl;
 			return EXIT_FAILURE;
 		}
@@ -575,6 +598,7 @@ int main(int, char* argv[])
 
 		if (attribs & FILE_ATTRIBUTE_DIRECTORY)
 		{
+			logger->error("The given INF path is a directory, not a file");
 			std::cout << color(red) << "The given INF path is a directory, not a file" << std::endl;
 			return EXIT_FAILURE;
 		}
@@ -583,12 +607,15 @@ int main(int, char* argv[])
 
 		if (!devcon::inf_default_install(to_wstring(infPath), &rebootRequired))
 		{
+			logger->error("Failed to install INF file, error: %v",
+				winapi::GetLastErrorStdStr());
 			std::cout << color(red) <<
 				"Failed to install INF file, error: "
 				<< winapi::GetLastErrorStdStr() << std::endl;
 			return GetLastError();
 		}
 
+		logger->info("INF file installed successfully");
 		std::cout << color(green) << "INF file installed successfully" << std::endl;
 
 		return (rebootRequired) ? ERROR_RESTART_APPLICATION : EXIT_SUCCESS;

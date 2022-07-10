@@ -38,6 +38,11 @@
 #include "colorwin.hpp"
 
 //
+// Logging
+// 
+#include "easylogging++.h"
+
+//
 // Setup helpers
 // 
 #include "Devcon.h"
