@@ -452,7 +452,7 @@ int main(int, char* argv[])
 			return EXIT_FAILURE;
 		}
 
-		bool rebootRequired;
+		bool rebootRequired = false;
 
 		if (!devcon::inf_default_install(to_wstring(infPath), &rebootRequired))
 		{
