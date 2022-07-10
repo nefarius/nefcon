@@ -69,10 +69,14 @@ inline std::vector<wchar_t> BuildMultiString(const std::vector<std::wstring>& da
 
 auto devcon::create(const std::wstring& className, const GUID* classGuid, const std::wstring& hardwareId) -> bool
 {
+	el::Logger* logger = el::Loggers::getLogger("default");
 	const auto deviceInfoSet = SetupDiCreateDeviceInfoList(classGuid, nullptr);
 
 	if (INVALID_HANDLE_VALUE == deviceInfoSet)
+	{
+		logger->error("SetupDiCreateDeviceInfoList failed with error code %v", GetLastError());
 		return false;
+	}
 
 	SP_DEVINFO_DATA deviceInfoData;
 	deviceInfoData.cbSize = sizeof(deviceInfoData);
@@ -89,6 +93,7 @@ auto devcon::create(const std::wstring& className, const GUID* classGuid, const 
 
 	if (!cdiRet)
 	{
+		logger->error("SetupDiCreateDeviceInfoW failed with error code %v", GetLastError());
 		SetupDiDestroyDeviceInfoList(deviceInfoSet);
 		return false;
 	}
@@ -103,6 +108,7 @@ auto devcon::create(const std::wstring& className, const GUID* classGuid, const 
 
 	if (!sdrpRet)
 	{
+		logger->error("SetupDiSetDeviceRegistryPropertyW failed with error code %v", GetLastError());
 		SetupDiDestroyDeviceInfoList(deviceInfoSet);
 		return false;
 	}
@@ -115,6 +121,7 @@ auto devcon::create(const std::wstring& className, const GUID* classGuid, const 
 
 	if (!cciRet)
 	{
+		logger->error("SetupDiCallClassInstaller failed with error code %v", GetLastError());
 		SetupDiDestroyDeviceInfoList(deviceInfoSet);
 		return false;
 	}
