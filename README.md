@@ -42,6 +42,12 @@ For a console example use `nefconc`, for windowless execution use `nefconw` bina
 .\nefconw --remove-device-node --hardware-id root\HidHide --class-guid 4D36E97D-E325-11CE-BFC1-08002BE10318
 ```
 
+### Install file system volume controller driver
+
+```text
+.\nefconw --inf-default-install --inf-path "F:\Downloads\btrfs-1.8\btrfs.inf"
+```
+
 ## 3rd party credits
 
 This project uses the following 3rd party resources:
