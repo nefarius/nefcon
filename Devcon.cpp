@@ -922,6 +922,30 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
 			break;
 		}
 
+		Newdev newdev;
+		BOOL reboot;
+
+		if (!newdev.pDiInstallDriverW)
+		{
+			logger->error("Couldn't find DiInstallDriverW export");
+			SetLastError(ERROR_INVALID_FUNCTION);
+			return false;
+		}
+
+		logger->verbose(1, "Invoking DiInstallDriverW");
+
+		const auto ret = newdev.pDiInstallDriverW(
+			nullptr,
+			fullInfPath.c_str(),
+			0,
+			&reboot
+		);
+
+		logger->verbose(1, "DiInstallDriverW returned with %v, reboot required: %v", ret, reboot);
+
+		if (rebootRequired)
+			*rebootRequired = reboot > 1;
+
 	} while (FALSE);
 
 	if (hInf != INVALID_HANDLE_VALUE)
