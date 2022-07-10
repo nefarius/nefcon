@@ -55,3 +55,4 @@ This project uses the following 3rd party resources:
 - [Argh! A minimalist argument handler](https://github.com/adishavit/argh)
 - [Scoped coloring of Windows console output](https://github.com/jrebacz/colorwin)
 - [Convenient high-level C++ wrappers around Windows Registry Win32 APIs](https://github.com/GiovanniDicanio/WinReg)
+- [Single header C++ logging library](https://github.com/amrayn/easyloggingpp)
