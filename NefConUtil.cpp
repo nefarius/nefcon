@@ -306,7 +306,7 @@ int main(int argc, char* argv[])
 		logger->info("Driver installed successfully");
 		std::cout << color(green) << "Driver installed successfully" << std::endl;
 
-		return (rebootRequired) ? ERROR_RESTART_APPLICATION : EXIT_SUCCESS;
+		return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
 	}
 
 	if (cmdl[{ "--uninstall-driver" }])
@@ -353,7 +353,7 @@ int main(int argc, char* argv[])
 		logger->info("Driver uninstalled successfully");
 		std::cout << color(green) << "Driver uninstalled successfully" << std::endl;
 
-		return (rebootRequired) ? ERROR_RESTART_APPLICATION : EXIT_SUCCESS;
+		return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
 	}
 
 	if (cmdl[{ "--create-driver-service" }])
@@ -541,7 +541,7 @@ int main(int argc, char* argv[])
 		logger->info("Device and driver removed successfully");
 		std::cout << color(green) << "Device and driver removed successfully" << std::endl;
 
-		return (rebootRequired) ? ERROR_RESTART_APPLICATION : EXIT_SUCCESS;
+		return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
 	}
 
 	if (cmdl[{ "--inf-default-install" }])
@@ -590,7 +590,7 @@ int main(int argc, char* argv[])
 		logger->info("INF file installed successfully");
 		std::cout << color(green) << "INF file installed successfully" << std::endl;
 
-		return (rebootRequired) ? ERROR_RESTART_APPLICATION : EXIT_SUCCESS;
+		return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
 	}
 
 	if (cmdl[{ "--inf-default-uninstall" }])
@@ -637,7 +637,7 @@ int main(int argc, char* argv[])
 		logger->info("INF file uninstalled successfully");
 		std::cout << color(green) << "INF file uninstalled successfully" << std::endl;
 
-		return (rebootRequired) ? ERROR_RESTART_APPLICATION : EXIT_SUCCESS;
+		return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
 	}
 
 #pragma endregion
