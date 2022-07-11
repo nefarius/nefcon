@@ -51,8 +51,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,5,0
- PRODUCTVERSION 1,5,0
+ FILEVERSION 1,6,0
+ PRODUCTVERSION 1,6,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -69,12 +69,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Nefarius Software Solutions e.U."
             VALUE "FileDescription", "Nefarius' Device Console Utility"
-            VALUE "FileVersion", "1.5.0"
+            VALUE "FileVersion", "1.6.0"
             VALUE "InternalName", "nefcon.exe"
             VALUE "LegalCopyright", "Copyright (C) 2022 Nefarius Software Solutions e.U."
             VALUE "OriginalFilename", "nefcon.exe"
             VALUE "ProductName", "nefcon"
-            VALUE "ProductVersion", "1.5.0"
+            VALUE "ProductVersion", "1.6.0"
         END
     END
     BLOCK "VarFileInfo"
