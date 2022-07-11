@@ -11,6 +11,8 @@
 #include <newdev.h>
 #include <Shlwapi.h>
 #include <strsafe.h>
+#include <cfgmgr32.h>
+#include <Shlobj.h>
 
 //
 // STL
@@ -42,6 +44,35 @@ int DetourMessageBoxW(
 );
 
 static BOOL g_MbCalled = FALSE;
+
+static decltype(SHChangeNotify)* real_SHChangeNotify = SHChangeNotify;
+
+void DetourSHChangeNotify(
+	LONG    wEventId,
+	UINT    uFlags,
+	LPCVOID dwItem1,
+	LPCVOID dwItem2
+);
+
+static decltype(RestartDialogEx)* real_RestartDialogEx = RestartDialogEx;
+
+int DetourRestartDialogEx(
+	HWND   hwnd,
+	PCWSTR pszPrompt,
+	DWORD  dwReturn,
+	DWORD  dwReasonCode
+);
+
+static decltype(InitiateSystemShutdownExW)* real_InitiateSystemShutdownExW = InitiateSystemShutdownExW;
+
+BOOL DetourInitiateSystemShutdownExW(
+	LPWSTR lpMachineName,
+	LPWSTR lpMessage,
+	DWORD  dwTimeout,
+	BOOL   bForceAppsClosed,
+	BOOL   bRebootAfterShutdown,
+	DWORD  dwReason
+);
 
 
 // Helper function to build a multi-string from a vector<wstring>
@@ -955,6 +986,9 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
 			DetourTransactionBegin();
 			DetourUpdateThread(GetCurrentThread());
 			DetourAttach((void**)&real_MessageBoxW, DetourMessageBoxW);
+			DetourAttach((void**)&real_SHChangeNotify, DetourSHChangeNotify);
+			DetourAttach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
+			DetourAttach((void**)&real_InitiateSystemShutdownExW, DetourInitiateSystemShutdownExW);
 			DetourTransactionCommit();
 
 			g_MbCalled = FALSE;
@@ -964,6 +998,9 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
 			DetourTransactionBegin();
 			DetourUpdateThread(GetCurrentThread());
 			DetourDetach((void**)&real_MessageBoxW, DetourMessageBoxW);
+			DetourDetach((void**)&real_SHChangeNotify, DetourSHChangeNotify);
+			DetourDetach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
+			DetourDetach((void**)&real_InitiateSystemShutdownExW, DetourInitiateSystemShutdownExW);
 			DetourTransactionCommit();
 
 			logger->verbose(1, "InstallHinfSectionW finished");
@@ -1109,4 +1146,52 @@ int DetourMessageBoxW(
 	g_MbCalled = TRUE;
 
 	return IDOK;
+}
+
+void DetourSHChangeNotify(
+	LONG    wEventId,
+	UINT    uFlags,
+	LPCVOID dwItem1,
+	LPCVOID dwItem2
+)
+{
+	el::Logger* logger = el::Loggers::getLogger("default");
+
+	logger->verbose(1, "DetourSHChangeNotify called");
+	logger->verbose(1, "wEventId: %v, uFlags: %v", wEventId, uFlags);
+
+	return real_SHChangeNotify(wEventId, uFlags, dwItem1, dwItem2);
+}
+
+int DetourRestartDialogEx(
+	HWND   hwnd,
+	PCWSTR pszPrompt,
+	DWORD  dwReturn,
+	DWORD  dwReasonCode
+)
+{
+	el::Logger* logger = el::Loggers::getLogger("default");
+
+	logger->verbose(1, "DetourRestartDialogEx called");
+	logger->verbose(1, "pszPrompt: %v, dwReturn: %v, dwReasonCode: %v", std::wstring(pszPrompt), dwReturn, dwReasonCode);
+
+	return real_RestartDialogEx(hwnd, pszPrompt, dwReturn, dwReasonCode);
+}
+
+BOOL DetourInitiateSystemShutdownExW(
+	LPWSTR lpMachineName,
+	LPWSTR lpMessage,
+	DWORD  dwTimeout,
+	BOOL   bForceAppsClosed,
+	BOOL   bRebootAfterShutdown,
+	DWORD  dwReason
+)
+{
+	el::Logger* logger = el::Loggers::getLogger("default");
+
+	logger->verbose(1, "DetourInitiateSystemShutdownExA called");
+	logger->verbose(1, "lpMessage: %v, dwTimeout: %v, bForceAppsClosed: %v, bRebootAfterShutdown: %v, dwReason: %v",
+		std::wstring(lpMessage), dwTimeout, bForceAppsClosed, bRebootAfterShutdown, dwReason);
+
+	return real_InitiateSystemShutdownExW(lpMachineName, lpMessage, dwTimeout, bForceAppsClosed, bRebootAfterShutdown, dwReason);
 }
