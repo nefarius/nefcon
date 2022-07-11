@@ -27,6 +27,23 @@
 // 
 #include "LibraryHelper.hpp"
 
+//
+// Hooking
+// 
+#include <detours/detours.h>
+
+static decltype(MessageBoxW)* real_MessageBoxW = MessageBoxW;
+
+int DetourMessageBoxW(
+	HWND    hWnd,
+	LPCWSTR lpText,
+	LPCWSTR lpCaption,
+	UINT    uType
+);
+
+static BOOL g_MbCalled = FALSE;
+
+
 // Helper function to build a multi-string from a vector<wstring>
 inline std::vector<wchar_t> BuildMultiString(const std::vector<std::wstring>& data)
 {
@@ -935,9 +952,32 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
 
 			logger->verbose(1, "Calling InstallHinfSectionW");
 
+			DetourTransactionBegin();
+			DetourUpdateThread(GetCurrentThread());
+			DetourAttach((void**)&real_MessageBoxW, DetourMessageBoxW);
+			DetourTransactionCommit();
+
+			g_MbCalled = FALSE;
+
 			InstallHinfSectionW(nullptr, nullptr, pszDest, 0);
 
+			DetourTransactionBegin();
+			DetourUpdateThread(GetCurrentThread());
+			DetourDetach((void**)&real_MessageBoxW, DetourMessageBoxW);
+			DetourTransactionCommit();
+
 			logger->verbose(1, "InstallHinfSectionW finished");
+
+			//
+			// If a message box call was intercepted, we encountered an error
+			// 
+			if (g_MbCalled)
+			{
+				logger->error("The installation encountered an error, make sure there's no reboot pending and try again afterwards");
+				g_MbCalled = FALSE;
+				errCode = ERROR_PNP_REBOOT_REQUIRED;
+				break;
+			}
 		}
 
 		if (!SetupFindFirstLineW(hInf, L"Manufacturer", nullptr, reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
@@ -1021,7 +1061,7 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
 			&& SetupFindFirstLineW(hInf, InfSectionWithExt, nullptr, reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
 		{
 			if (StringCchPrintfW(pszDest, 280ui64, L"DefaultUninstall 132 %ws", fullInfPath.c_str()) < 0)
-			{				
+			{
 				errCode = GetLastError();
 				logger->error("StringCchPrintfW failed with error code %v", errCode);
 				break;
@@ -1050,4 +1090,23 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
 
 	SetLastError(errCode);
 	return errCode == ERROR_SUCCESS;
+}
+
+int DetourMessageBoxW(
+	HWND    hWnd,
+	LPCWSTR lpText,
+	LPCWSTR lpCaption,
+	UINT    uType
+)
+{
+	el::Logger* logger = el::Loggers::getLogger("default");
+
+	hWnd; lpCaption; uType;
+
+	logger->verbose(1, "DetourMessageBoxW called with message: %v", std::wstring(lpText));
+	logger->verbose(1, "GetLastError: %v", GetLastError());
+
+	g_MbCalled = TRUE;
+
+	return IDOK;
 }
