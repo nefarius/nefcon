@@ -6,7 +6,18 @@ Windows device driver installation and management tool.
 
 ## About
 
-This little self-contained, no-dependency tool can be built either as a console application or a Windows application which has no visible window (ideal to use in combination with setup makers). It offers a command-line-based driver (un-)installer and allows for simple manipulation of class filter entries. Run `.\nefconc.exe --help` to see all the options offered.
+This little self-contained, no-dependency tool can be built either as a console application or a Windows application which has no visible window (ideal to use in combination with setup makers). It offers a command-line-based driver (un-)installer and allows for simple manipulation of class filter entries. Run `nefconc.exe --help` to see all the options offered.
+
+## Installation
+
+Binaries are available to download in the [releases](https://github.com/nefarius/nefcon/releases/latest) page, just download and extract. However, if you are using a package manager, you can use one of the following options:
+
+### Scoop
+[`nefcon`](https://scoop.sh/#/apps?q=nefcon&s=0&d=1&o=true) is available in the [Extras](https://github.com/ScoopInstaller/Extras) bucket:
+```text
+scoop bucket add extras
+scoop install nefcon
+```
 
 ## Examples
 
@@ -15,37 +26,37 @@ For a console example use `nefconc`, for windowless execution use `nefconw` bina
 ### Installing a Primitive Driver
 
 ```text
-.\nefconw --install-driver --inf-path "Path\To\Inf.inf"
+nefconw --install-driver --inf-path "Path\To\Inf.inf"
 ```
 
 ### Uninstalling a Primitive Driver
 
 ```text
-.\nefconw --uninstall-driver --inf-path "Path\To\Inf.inf"
+nefconw --uninstall-driver --inf-path "Path\To\Inf.inf"
 ```
 
 ### Modifying HIDClass upper filters
 
 ```text
-.\nefconw --add-class-filter --position upper --service-name HidHide --class-guid 745a17a0-74d3-11d0-b6fe-00a0c90f57da
+nefconw --add-class-filter --position upper --service-name HidHide --class-guid 745a17a0-74d3-11d0-b6fe-00a0c90f57da
 ```
 
 ### Create virtual Root-enumerated device node
 
 ```text
-.\nefconw --create-device-node --hardware-id root\HidHide --class-name System --class-guid 4D36E97D-E325-11CE-BFC1-08002BE10318
+nefconw --create-device-node --hardware-id root\HidHide --class-name System --class-guid 4D36E97D-E325-11CE-BFC1-08002BE10318
 ```
 
 ### Remove device(s) and driver
 
 ```text
-.\nefconw --remove-device-node --hardware-id root\HidHide --class-guid 4D36E97D-E325-11CE-BFC1-08002BE10318
+nefconw --remove-device-node --hardware-id root\HidHide --class-guid 4D36E97D-E325-11CE-BFC1-08002BE10318
 ```
 
 ### Install file system volume controller driver
 
 ```text
-.\nefconw --inf-default-install --inf-path "F:\Downloads\btrfs-1.8\btrfs.inf"
+nefconw --inf-default-install --inf-path "F:\Downloads\btrfs-1.8\btrfs.inf"
 ```
 
 ## 3rd party credits
