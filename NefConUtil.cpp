@@ -701,5 +701,5 @@ int main(int argc, char* argv[])
 
 #pragma endregion
 
-	return EXIT_FAILURE;
+	return EXIT_SUCCESS;
 }
