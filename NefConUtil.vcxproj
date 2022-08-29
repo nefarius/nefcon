@@ -282,6 +282,9 @@
   <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Release (WinMain)|x64'">
     <VcpkgUseStatic>true</VcpkgUseStatic>
   </PropertyGroup>
+  <PropertyGroup Label="Vcpkg">
+    <VcpkgEnableManifest>true</VcpkgEnableManifest>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug (Console)|x64'">
     <ClCompile>
       <PrecompiledHeader>
@@ -511,25 +514,28 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Devcon.cpp" />
-    <ClCompile Include="easylogging++.cc" />
-    <ClCompile Include="NefConSetup.cpp" />
-    <ClCompile Include="NefConUtil.cpp" />
+    <ClCompile Include=".\src\Devcon.cpp" />
+    <ClCompile Include=".\src\easylogging++.cc" />
+    <ClCompile Include=".\src\NefConSetup.cpp" />
+    <ClCompile Include=".\src\NefConUtil.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="argh.h" />
-    <ClInclude Include="Devcon.h" />
-    <ClInclude Include="easylogging++.h" />
-    <ClInclude Include="framework.h" />
-    <ClInclude Include="LibraryHelper.hpp" />
-    <ClInclude Include="NefConSetup.h" />
-    <ClInclude Include="NefConUtil.h" />
-    <ClInclude Include="colorwin.hpp" />
-    <ClInclude Include="resource.h" />
-    <ClInclude Include="UniUtil.h" />
+    <ClInclude Include=".\src\argh.h" />
+    <ClInclude Include=".\src\Devcon.h" />
+    <ClInclude Include=".\src\easylogging++.h" />
+    <ClInclude Include=".\src\framework.h" />
+    <ClInclude Include=".\src\LibraryHelper.hpp" />
+    <ClInclude Include=".\src\NefConSetup.h" />
+    <ClInclude Include=".\src\NefConUtil.h" />
+    <ClInclude Include=".\src\colorwin.hpp" />
+    <ClInclude Include=".\src\resource.h" />
+    <ClInclude Include=".\src\UniUtil.h" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="NefConUtil.rc" />
+    <ResourceCompile Include=".\src\NefConUtil.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="vcpkg.json" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

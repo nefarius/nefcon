@@ -1,0 +1,10 @@
+{
+  "name": "nefcon",
+  "version": "1.0.0",
+  "description": "nefcon",
+  "license": "MIT",
+  "supports": "!(arm | uwp)",
+  "dependencies": [
+	"detours"
+  ]
+}
