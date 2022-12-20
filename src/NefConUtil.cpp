@@ -93,7 +93,7 @@ int main(int argc, char* argv[])
 
 	for (i = 0; i < nArgs; i++)
 	{
-		narrow.push_back(to_string(std::wstring(szArglist[i])));
+		narrow.push_back(ConvertWideToANSI(std::wstring(szArglist[i])));
 	}
 
 	argv.resize(nArgs);
@@ -167,7 +167,7 @@ int main(int argc, char* argv[])
 			return EXIT_FAILURE;
 		}
 
-		auto ret = devcon::add_device_class_filter(&clID, to_wstring(serviceName), pos);
+		auto ret = devcon::add_device_class_filter(&clID, ConvertAnsiToWide(serviceName), pos);
 
 		if (ret)
 		{
@@ -238,7 +238,7 @@ int main(int argc, char* argv[])
 			return EXIT_FAILURE;
 		}
 
-		auto ret = devcon::remove_device_class_filter(&clID, to_wstring(serviceName), pos);
+		auto ret = devcon::remove_device_class_filter(&clID, ConvertAnsiToWide(serviceName), pos);
 
 		if (ret)
 		{
@@ -293,7 +293,7 @@ int main(int argc, char* argv[])
 
 		bool rebootRequired;
 
-		if (!devcon::install_driver(to_wstring(infPath), &rebootRequired))
+		if (!devcon::install_driver(ConvertAnsiToWide(infPath), &rebootRequired))
 		{
 			logger->error("Failed to install driver, error: %v",
 				winapi::GetLastErrorStdStr());
@@ -340,7 +340,7 @@ int main(int argc, char* argv[])
 
 		bool rebootRequired;
 
-		if (!devcon::uninstall_driver(to_wstring(infPath), &rebootRequired))
+		if (!devcon::uninstall_driver(ConvertAnsiToWide(infPath), &rebootRequired))
 		{
 			logger->error("Failed to uninstall driver, error: %v",
 				winapi::GetLastErrorStdStr());
@@ -476,7 +476,7 @@ int main(int argc, char* argv[])
 			return EXIT_FAILURE;
 		}
 
-		auto ret = devcon::create(to_wstring(className), &clID, to_wstring(hwId));
+		auto ret = devcon::create(ConvertAnsiToWide(className), &clID, ConvertAnsiToWide(hwId));
 
 		if (!ret)
 		{
@@ -526,7 +526,7 @@ int main(int argc, char* argv[])
 
 		bool rebootRequired;
 
-		auto ret = devcon::uninstall_device_and_driver(&clID, to_wstring(hwId), &rebootRequired);
+		auto ret = devcon::uninstall_device_and_driver(&clID, ConvertAnsiToWide(hwId), &rebootRequired);
 
 		if (!ret)
 		{
@@ -577,7 +577,7 @@ int main(int argc, char* argv[])
 
 		bool rebootRequired = false;
 
-		if (!devcon::inf_default_install(to_wstring(infPath), &rebootRequired))
+		if (!devcon::inf_default_install(ConvertAnsiToWide(infPath), &rebootRequired))
 		{
 			logger->error("Failed to install INF file, error: %v",
 				winapi::GetLastErrorStdStr());
@@ -624,7 +624,7 @@ int main(int argc, char* argv[])
 
 		bool rebootRequired = false;
 
-		if (!devcon::inf_default_uninstall(to_wstring(infPath), &rebootRequired))
+		if (!devcon::inf_default_uninstall(ConvertAnsiToWide(infPath), &rebootRequired))
 		{
 			logger->error("Failed to uninstall INF file, error: %v",
 				winapi::GetLastErrorStdStr());
