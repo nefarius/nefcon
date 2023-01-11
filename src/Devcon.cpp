@@ -368,7 +368,7 @@ bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequire
 	logger->verbose(1, "DiInstallDriverW returned %v, reboot required: %v", ret, reboot);
 
 	if (rebootRequired)
-		*rebootRequired = reboot > 1;
+		*rebootRequired = reboot > 0;
 
 	return ret > 0;
 }
@@ -399,7 +399,7 @@ bool devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequi
 	logger->verbose(1, "DiUninstallDriverW returned %v, reboot required: %v", ret, reboot);
 
 	if (rebootRequired)
-		*rebootRequired = reboot > 1;
+		*rebootRequired = reboot > 0;
 
 	return ret > 0;
 }
@@ -1014,7 +1014,7 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
 		logger->verbose(1, "DiInstallDriverW returned with %v, reboot required: %v", ret, reboot);
 
 		if (rebootRequired)
-			*rebootRequired = reboot > 1;
+			*rebootRequired = reboot > 0;
 
 	} while (FALSE);
 
