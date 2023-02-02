@@ -19,6 +19,12 @@ scoop bucket add extras
 scoop install nefcon
 ```
 
+### Winget
+[`nefcon`](https://github.com/microsoft/winget-pkgs/tree/master/manifests/n/Nefarius/nefcon) is available in the [winget-pkgs](https://github.com/microsoft/winget-pkgs) repository:
+```text
+winget install nefcon
+```
+
 ## Examples
 
 For a console example use `nefconc`, for windowless execution use `nefconw` binary.
