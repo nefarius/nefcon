@@ -1,3 +1,4 @@
+// ReSharper disable CppTooWideScope
 #include "NefConUtil.h"
 
 using namespace colorwin;
@@ -73,7 +74,8 @@ int main(int argc, char* argv[])
 		"--position",
 		"--service-name",
 		"--display-name",
-		"--bin-path"
+		"--bin-path",
+		"--file-path"
 		});
 
 #if defined(NEFCON_WINMAIN)
@@ -110,7 +112,7 @@ int main(int argc, char* argv[])
 
 	el::Logger* logger = el::Loggers::getLogger("default");
 
-	std::string infPath, binPath, hwId, className, classGuid, serviceName, displayName, position;
+	std::string infPath, binPath, hwId, className, classGuid, serviceName, displayName, position, filePath;
 
 #pragma region Filter Driver actions
 
@@ -642,6 +644,57 @@ int main(int argc, char* argv[])
 
 #pragma endregion
 
+#pragma region Other Utilities
+
+	if (cmdl[{ "--delete-file-on-reboot" }])
+	{
+		int errorCode;
+		if (!IsAdmin(errorCode)) return errorCode;
+
+		filePath = cmdl({ "--file-path" }).str();
+
+		if (filePath.empty()) {
+			logger->error("File path missing");
+			std::cout << color(red) << "File path missing" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if (_access(filePath.c_str(), 0) != 0)
+		{
+			logger->error("The given file path doesn't exist, is the path correct?");
+			std::cout << color(red) << "The given file path doesn't exist, is the path correct?" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		const DWORD attribs = GetFileAttributesA(filePath.c_str());
+
+		if (attribs & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			logger->error("The given file path is a directory, not a file");
+			std::cout << color(red) << "The given file path is a directory, not a file" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		const BOOL ret = MoveFileExA(filePath.c_str(), NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+
+		if (!ret)
+		{
+			logger->error("Failed to register file for removal, error: %v",
+				winapi::GetLastErrorStdStr());
+			std::cout << color(red) <<
+				"Failed to register file for removal, error: "
+				<< winapi::GetLastErrorStdStr() << std::endl;
+			return GetLastError();
+		}
+
+		logger->info("File removal registered successfully");
+		std::cout << color(green) << "File removal registered successfully" << std::endl;
+
+		return EXIT_SUCCESS;
+	}
+
+#pragma endregion
+
 	if (cmdl[{ "-v", "--version" }])
 	{
 		std::cout << "nefcon version " <<
@@ -692,6 +745,8 @@ int main(int argc, char* argv[])
 	std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << std::endl;
 	std::cout << "    --inf-default-uninstall    Uninstalls an INF file with a [DefaultUninstall] section" << std::endl;
 	std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << std::endl;
+	std::cout << "    --delete-file-on-reboot    Marks a given file to get deleted on next reboot" << std::endl;
+	std::cout << "      --file-path                The absolute path of the file to remove (required)" << std::endl;
 	std::cout << "    -v, --version              Display version of this utility" << std::endl;
 	std::cout << std::endl;
 	std::cout << "  logging:" << std::endl;
