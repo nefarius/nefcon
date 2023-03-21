@@ -216,38 +216,141 @@ std::string winapi::GetImageBasePath()
 
 DWORD winapi::IsAppRunningAsAdminMode(PBOOL IsAdmin)
 {
-    DWORD dwError = ERROR_SUCCESS;
-    PSID pAdministratorsGroup = NULL;
+	DWORD dwError = ERROR_SUCCESS;
+	PSID pAdministratorsGroup = NULL;
 
-    // Allocate and initialize a SID of the administrators group.
-    SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
-    if (!AllocateAndInitializeSid(
-        &NtAuthority, 
-        2, 
-        SECURITY_BUILTIN_DOMAIN_RID, 
-        DOMAIN_ALIAS_RID_ADMINS, 
-        0, 0, 0, 0, 0, 0, 
-        &pAdministratorsGroup))
-    {
-        dwError = GetLastError();
-        goto Cleanup;
-    }
+	// Allocate and initialize a SID of the administrators group.
+	SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
+	if (!AllocateAndInitializeSid(
+		&NtAuthority,
+		2,
+		SECURITY_BUILTIN_DOMAIN_RID,
+		DOMAIN_ALIAS_RID_ADMINS,
+		0, 0, 0, 0, 0, 0,
+		&pAdministratorsGroup))
+	{
+		dwError = GetLastError();
+		goto Cleanup;
+	}
 
-    // Determine whether the SID of administrators group is enabled in 
-    // the primary access token of the process.
-    if (!CheckTokenMembership(NULL, pAdministratorsGroup, IsAdmin))
-    {
-        dwError = GetLastError();
-        goto Cleanup;
-    }
+	// Determine whether the SID of administrators group is enabled in 
+	// the primary access token of the process.
+	if (!CheckTokenMembership(NULL, pAdministratorsGroup, IsAdmin))
+	{
+		dwError = GetLastError();
+		goto Cleanup;
+	}
 
 Cleanup:
-    // Centralized cleanup for all allocated resources.
-    if (pAdministratorsGroup)
-    {
-        FreeSid(pAdministratorsGroup);
-        pAdministratorsGroup = NULL;
-    }
+	// Centralized cleanup for all allocated resources.
+	if (pAdministratorsGroup)
+	{
+		FreeSid(pAdministratorsGroup);
+		pAdministratorsGroup = NULL;
+	}
 
 	return dwError;
+}
+
+BOOL winapi::GetLogonSID(HANDLE hToken, PSID* ppsid)
+{
+	BOOL bSuccess = FALSE;
+	DWORD dwLength = 0;
+	PTOKEN_GROUPS ptg = nullptr;
+
+	// Get required buffer size and allocate the TOKEN_GROUPS buffer.
+	GetTokenInformation(hToken, TokenGroups, ptg, 0, &dwLength);
+
+	ptg = static_cast<PTOKEN_GROUPS>(HeapAlloc(
+		GetProcessHeap(),
+		HEAP_ZERO_MEMORY,
+		dwLength
+	));
+
+	// Get the token group information from the access token.
+	GetTokenInformation(hToken, TokenGroups, ptg, dwLength, &dwLength);
+
+	// Loop through the groups to find the logon SID.
+	for (DWORD dwIndex = 0; dwIndex < ptg->GroupCount; dwIndex++)
+	{
+		if ((ptg->Groups[dwIndex].Attributes & SE_GROUP_LOGON_ID)
+			== SE_GROUP_LOGON_ID)
+		{
+			// Found the logon SID; make a copy of it.
+
+			dwLength = GetLengthSid(ptg->Groups[dwIndex].Sid);
+			*ppsid = HeapAlloc(GetProcessHeap(),
+				HEAP_ZERO_MEMORY, dwLength);
+			CopySid(dwLength, *ppsid, ptg->Groups[dwIndex].Sid);
+
+			break;
+		}
+	}
+
+	return TRUE;
+}
+
+BOOL winapi::TakeFileOwnership(LPCWSTR file)
+{
+	HANDLE token;
+	DWORD len;
+	PSECURITY_DESCRIPTOR security = nullptr;
+	int retValue = 1;
+	PSID sid = NULL;
+
+	// Get the privileges you need
+	if (OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &token))
+	{
+		if (!SetPrivilege(L"SeTakeOwnershipPrivilege", 1))
+			retValue = 0;
+		if (!SetPrivilege(L"SeSecurityPrivilege", 1))
+			retValue = 0;
+		if (!SetPrivilege(L"SeBackupPrivilege", 1))
+			retValue = 0;
+		if (!SetPrivilege(L"SeRestorePrivilege", 1))
+			retValue = 0;
+	}
+	else retValue = 0;
+
+	// Create the security descriptor
+	if (retValue)
+	{
+		GetFileSecurity(file, OWNER_SECURITY_INFORMATION, security, 0, &len);
+		security = malloc(len);
+		if (!InitializeSecurityDescriptor(security, SECURITY_DESCRIPTOR_REVISION))
+			retValue = 0;
+	}
+
+	// Get the sid for the username
+	if (retValue)
+	{
+		GetLogonSID(token, &sid);
+	}
+	// Set the sid to be the new owner
+	if (retValue && sid && !SetSecurityDescriptorOwner(security, sid, 0))
+		retValue = 0;
+
+	// Save the security descriptor
+	if (retValue)
+		retValue = SetFileSecurity(file, OWNER_SECURITY_INFORMATION, security);
+	if (security) free(security);
+
+	return retValue;
+}
+
+BOOL winapi::SetPrivilege(LPCWSTR privilege, int enable)
+{
+	TOKEN_PRIVILEGES tp;
+	LUID luid;
+	HANDLE token;
+
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &token)) return 0;
+	if (!LookupPrivilegeValue(nullptr, privilege, &luid)) return 0;
+
+	tp.PrivilegeCount = 1;
+	tp.Privileges[0].Luid = luid;
+	tp.Privileges[0].Attributes = enable ? SE_PRIVILEGE_ENABLED : 0;
+
+	// Enable the privilege or disable all privileges.
+	return AdjustTokenPrivileges(token, 0, &tp, NULL, nullptr, nullptr);
 }

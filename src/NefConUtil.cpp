@@ -675,7 +675,23 @@ int main(int argc, char* argv[])
 			return EXIT_FAILURE;
 		}
 
+	retryRemove:
 		const BOOL ret = MoveFileExA(filePath.c_str(), NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+
+		if (!ret && GetLastError() == ERROR_ACCESS_DENIED)
+		{
+			if (!winapi::TakeFileOwnership(ConvertAnsiToWide(filePath).c_str()))
+			{
+				logger->error("Failed to take ownership of file, error: %v",
+					winapi::GetLastErrorStdStr());
+				std::cout << color(red) <<
+					"Failed to take ownership of file, error: "
+					<< winapi::GetLastErrorStdStr() << std::endl;
+				return GetLastError();
+			}
+
+			goto retryRemove;
+		}
 
 		if (!ret)
 		{

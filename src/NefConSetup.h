@@ -19,4 +19,10 @@ namespace winapi
     std::string GetImageBasePath();
 
     DWORD IsAppRunningAsAdminMode(PBOOL IsAdmin);
+
+    BOOL GetLogonSID(HANDLE hToken, PSID *ppsid);
+
+    BOOL TakeFileOwnership(LPCWSTR file);
+
+    BOOL SetPrivilege(LPCWSTR privilege, int enable);
 };
