@@ -290,52 +290,94 @@ BOOL winapi::GetLogonSID(HANDLE hToken, PSID* ppsid)
 	return TRUE;
 }
 
-BOOL winapi::TakeFileOwnership(LPCWSTR file)
+BOOL winapi::TakeFileOwnership(el::Logger* logger, LPCWSTR file)
 {
 	HANDLE token;
 	DWORD len;
 	PSECURITY_DESCRIPTOR security = nullptr;
-	int retValue = 1;
-	PSID sid = NULL;
+	PSID sid = nullptr;
+	BOOL ret = FALSE;
 
-	// Get the privileges you need
-	if (OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &token))
+	do
 	{
-		if (!SetPrivilege(L"SeTakeOwnershipPrivilege", 1))
-			retValue = 0;
-		if (!SetPrivilege(L"SeSecurityPrivilege", 1))
-			retValue = 0;
-		if (!SetPrivilege(L"SeBackupPrivilege", 1))
-			retValue = 0;
-		if (!SetPrivilege(L"SeRestorePrivilege", 1))
-			retValue = 0;
-	}
-	else retValue = 0;
+		// Get the privileges you need
+		if (OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &token))
+		{
+			if (!SetPrivilege(L"SeTakeOwnershipPrivilege", 1))
+			{
+				logger->error("SeTakeOwnershipPrivilege failed, error: %v",
+					GetLastErrorStdStr());
+				break;
+			}
+			if (!SetPrivilege(L"SeSecurityPrivilege", 1))
+			{
+				logger->error("SeSecurityPrivilege failed, error: %v",
+					GetLastErrorStdStr());
+				break;
+			}
+			if (!SetPrivilege(L"SeBackupPrivilege", 1))
+			{
+				logger->error("SeBackupPrivilege failed, error: %v",
+					GetLastErrorStdStr());
+				break;
+			}
+			if (!SetPrivilege(L"SeRestorePrivilege", 1))
+			{
+				logger->error("SeRestorePrivilege failed, error: %v",
+					GetLastErrorStdStr());
+				break;
+			}
+		}
+		else
+		{
+			logger->error("OpenProcessToken failed, error: %v",
+				GetLastErrorStdStr());
+			break;
+		}
 
-	// Create the security descriptor
-	if (retValue)
-	{
+		// Create the security descriptor
 		GetFileSecurity(file, OWNER_SECURITY_INFORMATION, security, 0, &len);
+
 		security = malloc(len);
+
 		if (!InitializeSecurityDescriptor(security, SECURITY_DESCRIPTOR_REVISION))
-			retValue = 0;
-	}
+		{
+			logger->error("InitializeSecurityDescriptor failed, error: %v",
+				GetLastErrorStdStr());
+			break;
+		}
 
-	// Get the sid for the username
-	if (retValue)
-	{
-		GetLogonSID(token, &sid);
-	}
-	// Set the sid to be the new owner
-	if (retValue && sid && !SetSecurityDescriptorOwner(security, sid, 0))
-		retValue = 0;
+		// Get the sid for the username
+		if (!GetLogonSID(token, &sid))
+		{
+			logger->error("GetLogonSID failed, error: %v",
+				GetLastErrorStdStr());
+			break;
+		}
 
-	// Save the security descriptor
-	if (retValue)
-		retValue = SetFileSecurity(file, OWNER_SECURITY_INFORMATION, security);
-	if (security) free(security);
+		// Set the sid to be the new owner
+		if (sid && !SetSecurityDescriptorOwner(security, sid, 0))
+		{
+			logger->error("SetSecurityDescriptorOwner failed, error: %v",
+				GetLastErrorStdStr());
+			break;
+		}
 
-	return retValue;
+		// Save the security descriptor
+		if (!SetFileSecurity(file, OWNER_SECURITY_INFORMATION, security))
+		{
+			logger->error("SetFileSecurity failed, error: %v",
+				GetLastErrorStdStr());
+			break;
+		}
+
+		ret = TRUE;
+	} while (FALSE);
+
+	if (security)
+		free(security);
+
+	return ret;
 }
 
 BOOL winapi::SetPrivilege(LPCWSTR privilege, int enable)
@@ -344,12 +386,12 @@ BOOL winapi::SetPrivilege(LPCWSTR privilege, int enable)
 	LUID luid;
 	HANDLE token;
 
-	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &token)) return 0;
-	if (!LookupPrivilegeValue(nullptr, privilege, &luid)) return 0;
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &token)) return FALSE;
+	if (!LookupPrivilegeValue(nullptr, privilege, &luid)) return FALSE;
 
 	tp.PrivilegeCount = 1;
 	tp.Privileges[0].Luid = luid;
-	tp.Privileges[0].Attributes = enable ? SE_PRIVILEGE_ENABLED : 0;
+	tp.Privileges[0].Attributes = enable ? SE_PRIVILEGE_ENABLED : FALSE;
 
 	// Enable the privilege or disable all privileges.
 	return AdjustTokenPrivileges(token, 0, &tp, NULL, nullptr, nullptr);

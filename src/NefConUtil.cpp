@@ -680,7 +680,7 @@ int main(int argc, char* argv[])
 
 		if (!ret && GetLastError() == ERROR_ACCESS_DENIED)
 		{
-			if (!winapi::TakeFileOwnership(ConvertAnsiToWide(filePath).c_str()))
+			if (!winapi::TakeFileOwnership(logger, ConvertAnsiToWide(filePath).c_str()))
 			{
 				logger->error("Failed to take ownership of file, error: %v",
 					winapi::GetLastErrorStdStr());
