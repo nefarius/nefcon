@@ -4,6 +4,8 @@
 
 Windows device driver installation and management tool.
 
+[![MSBuild](https://github.com/nefarius/nefcon/actions/workflows/msbuild.yml/badge.svg)](https://github.com/nefarius/nefcon/actions/workflows/msbuild.yml) [![GitHub All Releases](https://img.shields.io/github/downloads/nefarius/nefcon/total)](https://somsubhra.github.io/github-release-stats/?username=nefarius&repository=nefcon)
+
 ## About
 
 This little self-contained, no-dependency tool can be built either as a console application or a Windows application which has no visible window (ideal to use in combination with setup makers). It offers a command-line-based driver (un-)installer and allows for simple manipulation of class filter entries. Run `nefconc.exe --help` to see all the options offered.
@@ -73,3 +75,4 @@ This project uses the following 3rd party resources:
 - [Scoped coloring of Windows console output](https://github.com/jrebacz/colorwin)
 - [Convenient high-level C++ wrappers around Windows Registry Win32 APIs](https://github.com/GiovanniDicanio/WinReg)
 - [Single header C++ logging library](https://github.com/amrayn/easyloggingpp)
+- [Microsoft Detours](https://github.com/microsoft/Detours)
