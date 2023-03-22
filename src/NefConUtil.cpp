@@ -678,8 +678,10 @@ int main(int argc, char* argv[])
 	retryRemove:
 		const BOOL ret = MoveFileExA(filePath.c_str(), NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
 
+		// if this happens despite elevated permissions...
 		if (!ret && GetLastError() == ERROR_ACCESS_DENIED)
 		{
+			// ...take ownership of protected file (e.g. within the system directories)...
 			if (!winapi::TakeFileOwnership(logger, ConvertAnsiToWide(filePath).c_str()))
 			{
 				logger->error("Failed to take ownership of file, error: %v",
@@ -690,6 +692,7 @@ int main(int argc, char* argv[])
 				return GetLastError();
 			}
 
+			// ...and try again
 			goto retryRemove;
 		}
 
