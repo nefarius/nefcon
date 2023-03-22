@@ -4,6 +4,8 @@
 
 Windows device driver installation and management tool.
 
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/nefarius/nefcon/msbuild.yml)
+
 ## About
 
 This little self-contained, no-dependency tool can be built either as a console application or a Windows application which has no visible window (ideal to use in combination with setup makers). It offers a command-line-based driver (un-)installer and allows for simple manipulation of class filter entries. Run `nefconc.exe --help` to see all the options offered.
