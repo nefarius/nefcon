@@ -4,7 +4,7 @@
 
 Windows device driver installation and management tool.
 
-![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/nefarius/nefcon/msbuild.yml) ![GitHub all releases](https://img.shields.io/github/downloads/nefarius/nefcon/total)
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/nefarius/nefcon/msbuild.yml) [![GitHub All Releases](https://img.shields.io/github/downloads/nefarius/nefcon/total)](https://somsubhra.github.io/github-release-stats/?username=nefarius&repository=nefcon)
 
 ## About
 
