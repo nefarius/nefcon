@@ -43,15 +43,14 @@ BOOL winapi::AdjustProcessPrivileges()
 		FALSE,
 		&tp,
 		sizeof(TOKEN_PRIVILEGES),
-		(PTOKEN_PRIVILEGES)nullptr,
-		(PDWORD)nullptr
+		nullptr,
+		nullptr
 	);
 	err = GetLastError();
 
 	if (err != ERROR_SUCCESS)
 	{
 		bRetVal = FALSE;
-		goto exit1;
 	}
 
 exit1:
@@ -71,7 +70,8 @@ BOOL winapi::CreateDriverService(PCSTR ServiceName, PCSTR DisplayName, PCSTR Bin
 		SC_MANAGER_CREATE_SERVICE
 	);
 
-	if (!hSCManager) {
+	if (!hSCManager)
+	{
 		return FALSE;
 	}
 
@@ -115,7 +115,8 @@ BOOL winapi::DeleteDriverService(PCSTR ServiceName)
 		SC_MANAGER_CREATE_SERVICE
 	);
 
-	if (!hSCManager) {
+	if (!hSCManager)
+	{
 		return FALSE;
 	}
 
@@ -125,7 +126,8 @@ BOOL winapi::DeleteDriverService(PCSTR ServiceName)
 		SERVICE_START | DELETE | SERVICE_STOP
 	);
 
-	if (!hService) {
+	if (!hService)
+	{
 		CloseServiceHandle(hSCManager);
 		return FALSE;
 	}
@@ -155,7 +157,7 @@ std::string winapi::GetLastErrorStdStr(DWORD errorCode)
 			0, nullptr);
 		if (bufLen)
 		{
-			auto lpMsgStr = (LPCSTR)lpMsgBuf;
+			auto lpMsgStr = static_cast<LPCSTR>(lpMsgBuf);
 			std::string result(lpMsgStr, lpMsgStr + bufLen);
 
 			LocalFree(lpMsgBuf);
@@ -168,10 +170,10 @@ std::string winapi::GetLastErrorStdStr(DWORD errorCode)
 
 std::string winapi::GetVersionFromFile(std::string FilePath)
 {
-	DWORD  verHandle = 0;
-	UINT   size = 0;
+	DWORD verHandle = 0;
+	UINT size = 0;
 	LPBYTE lpBuffer = nullptr;
-	DWORD  verSize = GetFileVersionInfoSizeA(FilePath.c_str(), &verHandle);
+	DWORD verSize = GetFileVersionInfoSizeA(FilePath.c_str(), &verHandle);
 	std::stringstream versionString;
 
 	if (verSize != NULL)
@@ -180,7 +182,7 @@ std::string winapi::GetVersionFromFile(std::string FilePath)
 
 		if (GetFileVersionInfoA(FilePath.c_str(), verHandle, verSize, verData))
 		{
-			if (VerQueryValueA(verData, "\\", (VOID FAR * FAR*) & lpBuffer, &size))
+			if (VerQueryValueA(verData, "\\", (VOID FAR * FAR*)&lpBuffer, &size))
 			{
 				if (size)
 				{
@@ -203,7 +205,7 @@ std::string winapi::GetVersionFromFile(std::string FilePath)
 
 std::string winapi::GetImageBasePath()
 {
-	char myPath[MAX_PATH + 1] = { 0 };
+	char myPath[MAX_PATH + 1] = {0};
 
 	GetModuleFileNameA(
 		reinterpret_cast<HINSTANCE>(&__ImageBase),
@@ -217,7 +219,7 @@ std::string winapi::GetImageBasePath()
 DWORD winapi::IsAppRunningAsAdminMode(PBOOL IsAdmin)
 {
 	DWORD dwError = ERROR_SUCCESS;
-	PSID pAdministratorsGroup = NULL;
+	PSID pAdministratorsGroup = nullptr;
 
 	// Allocate and initialize a SID of the administrators group.
 	SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
@@ -235,10 +237,9 @@ DWORD winapi::IsAppRunningAsAdminMode(PBOOL IsAdmin)
 
 	// Determine whether the SID of administrators group is enabled in 
 	// the primary access token of the process.
-	if (!CheckTokenMembership(NULL, pAdministratorsGroup, IsAdmin))
+	if (!CheckTokenMembership(nullptr, pAdministratorsGroup, IsAdmin))
 	{
 		dwError = GetLastError();
-		goto Cleanup;
 	}
 
 Cleanup:
@@ -246,7 +247,7 @@ Cleanup:
 	if (pAdministratorsGroup)
 	{
 		FreeSid(pAdministratorsGroup);
-		pAdministratorsGroup = NULL;
+		pAdministratorsGroup = nullptr;
 	}
 
 	return dwError;
@@ -280,7 +281,7 @@ BOOL winapi::GetLogonSID(HANDLE hToken, PSID* ppsid)
 
 			dwLength = GetLengthSid(ptg->Groups[dwIndex].Sid);
 			*ppsid = HeapAlloc(GetProcessHeap(),
-				HEAP_ZERO_MEMORY, dwLength);
+			                   HEAP_ZERO_MEMORY, dwLength);
 			CopySid(dwLength, *ppsid, ptg->Groups[dwIndex].Sid);
 
 			break;
@@ -306,32 +307,32 @@ BOOL winapi::TakeFileOwnership(el::Logger* logger, LPCWSTR file)
 			if (!SetPrivilege(L"SeTakeOwnershipPrivilege", 1))
 			{
 				logger->error("SeTakeOwnershipPrivilege failed, error: %v",
-					GetLastErrorStdStr());
+				              GetLastErrorStdStr());
 				break;
 			}
 			if (!SetPrivilege(L"SeSecurityPrivilege", 1))
 			{
 				logger->error("SeSecurityPrivilege failed, error: %v",
-					GetLastErrorStdStr());
+				              GetLastErrorStdStr());
 				break;
 			}
 			if (!SetPrivilege(L"SeBackupPrivilege", 1))
 			{
 				logger->error("SeBackupPrivilege failed, error: %v",
-					GetLastErrorStdStr());
+				              GetLastErrorStdStr());
 				break;
 			}
 			if (!SetPrivilege(L"SeRestorePrivilege", 1))
 			{
 				logger->error("SeRestorePrivilege failed, error: %v",
-					GetLastErrorStdStr());
+				              GetLastErrorStdStr());
 				break;
 			}
 		}
 		else
 		{
 			logger->error("OpenProcessToken failed, error: %v",
-				GetLastErrorStdStr());
+			              GetLastErrorStdStr());
 			break;
 		}
 
@@ -343,7 +344,7 @@ BOOL winapi::TakeFileOwnership(el::Logger* logger, LPCWSTR file)
 		if (!InitializeSecurityDescriptor(security, SECURITY_DESCRIPTOR_REVISION))
 		{
 			logger->error("InitializeSecurityDescriptor failed, error: %v",
-				GetLastErrorStdStr());
+			              GetLastErrorStdStr());
 			break;
 		}
 
@@ -351,7 +352,7 @@ BOOL winapi::TakeFileOwnership(el::Logger* logger, LPCWSTR file)
 		if (!GetLogonSID(token, &sid))
 		{
 			logger->error("GetLogonSID failed, error: %v",
-				GetLastErrorStdStr());
+			              GetLastErrorStdStr());
 			break;
 		}
 
@@ -359,7 +360,7 @@ BOOL winapi::TakeFileOwnership(el::Logger* logger, LPCWSTR file)
 		if (sid && !SetSecurityDescriptorOwner(security, sid, 0))
 		{
 			logger->error("SetSecurityDescriptorOwner failed, error: %v",
-				GetLastErrorStdStr());
+			              GetLastErrorStdStr());
 			break;
 		}
 
@@ -367,12 +368,13 @@ BOOL winapi::TakeFileOwnership(el::Logger* logger, LPCWSTR file)
 		if (!SetFileSecurity(file, OWNER_SECURITY_INFORMATION, security))
 		{
 			logger->error("SetFileSecurity failed, error: %v",
-				GetLastErrorStdStr());
+			              GetLastErrorStdStr());
 			break;
 		}
 
 		ret = TRUE;
-	} while (FALSE);
+	}
+	while (FALSE);
 
 	if (security)
 		free(security);
