@@ -1,4 +1,6 @@
 // ReSharper disable CppTooWideScope
+// ReSharper disable CppClangTidyBugproneNarrowingConversions
+// ReSharper disable CppClangTidyHicppAvoidGoto
 #include "NefConUtil.h"
 
 using namespace colorwin;
@@ -693,7 +695,7 @@ int main(int argc, char* argv[])
 			}
 
 			// ...and try again
-			goto retryRemove;
+			goto retryRemove;  // NOLINT(cppcoreguidelines-avoid-goto)
 		}
 
 		if (!ret)
