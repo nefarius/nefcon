@@ -1011,8 +1011,8 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
             {
                 logger->error("No DefaultInstall and no Manufacturer section, can't continue");
                 errCode = ERROR_SECTION_NOT_FOUND;
-            }
-            break;
+                break;
+            }            
         }
 
         Newdev newdev;
@@ -1037,7 +1037,10 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
         logger->verbose(1, "DiInstallDriverW returned with %v, reboot required: %v", ret, reboot);
 
         if (rebootRequired)
+        {
             *rebootRequired = reboot > 0 || g_RestartDialogExCalled;
+            logger->verbose(1, "Set rebootRequired to: %v", *rebootRequired);
+        }
     } while (FALSE);
 
     if (hInf != INVALID_HANDLE_VALUE)
@@ -1109,7 +1112,10 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
             logger->verbose(1, "InstallHinfSectionW finished");
 
             if (rebootRequired)
+            {
                 *rebootRequired = g_RestartDialogExCalled;
+                logger->verbose(1, "Set rebootRequired to: %v", *rebootRequired);
+            }
         }
         else
         {
