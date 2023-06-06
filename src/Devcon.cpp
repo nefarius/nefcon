@@ -11,6 +11,7 @@
 #include <newdev.h>
 #include <Shlwapi.h>
 #include <strsafe.h>
+#include <ShlObj.h>
 
 //
 // STL
@@ -42,6 +43,17 @@ int DetourMessageBoxW(
 );
 
 static BOOL g_MbCalled = FALSE;
+
+static decltype(RestartDialogEx)* real_RestartDialogEx = RestartDialogEx;
+
+int DetourRestartDialogEx(
+    HWND hwnd,
+    PCWSTR pszPrompt,
+    DWORD dwReturn,
+    DWORD dwReasonCode
+);
+
+static BOOL g_RestartDialogExCalled = FALSE;
 
 
 // Helper function to build a multi-string from a vector<wstring>
@@ -176,12 +188,12 @@ bool devcon::restart_bth_usb_device()
 
         // get all devices info
         while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-                                                 &spDevInfoData,
-                                                 SPDRP_ENUMERATOR_NAME,
-                                                 &DataT,
-                                                 (PBYTE)buffer,
-                                                 buffersize,
-                                                 &buffersize))
+            &spDevInfoData,
+            SPDRP_ENUMERATOR_NAME,
+            &DataT,
+            (PBYTE)buffer,
+            buffersize,
+            &buffersize))
         {
             if (GetLastError() == ERROR_INVALID_DATA)
             {
@@ -266,12 +278,12 @@ bool devcon::enable_disable_bth_usb_device(bool state)
 
         // get all devices info
         while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-                                                 &spDevInfoData,
-                                                 SPDRP_ENUMERATOR_NAME,
-                                                 &DataT,
-                                                 (PBYTE)buffer,
-                                                 buffersize,
-                                                 &buffersize))
+            &spDevInfoData,
+            SPDRP_ENUMERATOR_NAME,
+            &DataT,
+            (PBYTE)buffer,
+            buffersize,
+            &buffersize))
         {
             if (GetLastError() == ERROR_INVALID_DATA)
             {
@@ -405,7 +417,7 @@ bool devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequi
 }
 
 bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
-                                     DeviceClassFilterPosition::Value position)
+    DeviceClassFilterPosition::Value position)
 {
     el::Logger* logger = el::Loggers::getLogger("default");
     auto key = SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS);
@@ -531,7 +543,7 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
 }
 
 bool devcon::remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
-                                        DeviceClassFilterPosition::Value position)
+    DeviceClassFilterPosition::Value position)
 {
     el::Logger* logger = el::Loggers::getLogger("default");
     auto key = SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS);
@@ -775,8 +787,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
         ret = true;
 
         logger->verbose(1, "Reboot required: %v", *rebootRequired);
-    }
-    while (FALSE);
+    } while (FALSE);
 
     if (pDrvInfoDetailData)
         free(pDrvInfoDetailData);
@@ -809,8 +820,7 @@ static PWSTR wstristr(PCWSTR haystack, PCWSTR needle)
         {
             return (PWSTR)haystack;
         }
-    }
-    while (*haystack++);
+    } while (*haystack++);
     return nullptr;
 }
 
@@ -847,12 +857,12 @@ bool devcon::uninstall_device_and_driver(const GUID* classGuid, const std::wstri
 
         // get all devices info
         while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-                                                 &spDevInfoData,
-                                                 SPDRP_HARDWAREID,
-                                                 &DataT,
-                                                 reinterpret_cast<PBYTE>(buffer),
-                                                 buffersize,
-                                                 &buffersize))
+            &spDevInfoData,
+            SPDRP_HARDWAREID,
+            &DataT,
+            reinterpret_cast<PBYTE>(buffer),
+            buffersize,
+            &buffersize))
         {
             if (GetLastError() == ERROR_INVALID_DATA)
             {
@@ -939,14 +949,14 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
         }
 
         if (SetupDiGetActualSectionToInstallW(
-                hInf,
-                L"DefaultInstall",
-                InfSectionWithExt,
-                0xFFu,
-                reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
-                nullptr)
+            hInf,
+            L"DefaultInstall",
+            InfSectionWithExt,
+            0xFFu,
+            reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
+            nullptr)
             && SetupFindFirstLineW(hInf, InfSectionWithExt, nullptr,
-                                   reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
+                reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
         {
             logger->verbose(1, "DefaultInstall section found");
             defaultSection = TRUE;
@@ -963,15 +973,18 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
             DetourTransactionBegin();
             DetourUpdateThread(GetCurrentThread());
             DetourAttach((void**)&real_MessageBoxW, DetourMessageBoxW);
+            DetourAttach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
             DetourTransactionCommit();
 
             g_MbCalled = FALSE;
+            g_RestartDialogExCalled = FALSE;
 
             InstallHinfSectionW(nullptr, nullptr, pszDest, 0);
 
             DetourTransactionBegin();
             DetourUpdateThread(GetCurrentThread());
             DetourDetach((void**)&real_MessageBoxW, DetourMessageBoxW);
+            DetourDetach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
             DetourTransactionCommit();
 
             logger->verbose(1, "InstallHinfSectionW finished");
@@ -990,7 +1003,7 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
         }
 
         if (!SetupFindFirstLineW(hInf, L"Manufacturer", nullptr,
-                                 reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
+            reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
         {
             logger->verbose(1, "No Manufacturer section found");
 
@@ -1024,9 +1037,8 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
         logger->verbose(1, "DiInstallDriverW returned with %v, reboot required: %v", ret, reboot);
 
         if (rebootRequired)
-            *rebootRequired = reboot > 0;
-    }
-    while (FALSE);
+            *rebootRequired = reboot > 0 || g_RestartDialogExCalled;
+    } while (FALSE);
 
     if (hInf != INVALID_HANDLE_VALUE)
     {
@@ -1062,14 +1074,14 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
         }
 
         if (SetupDiGetActualSectionToInstallW(
-                hInf,
-                L"DefaultUninstall",
-                InfSectionWithExt,
-                0xFFu,
-                reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
-                nullptr)
+            hInf,
+            L"DefaultUninstall",
+            InfSectionWithExt,
+            0xFFu,
+            reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
+            nullptr)
             && SetupFindFirstLineW(hInf, InfSectionWithExt, nullptr,
-                                   reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
+                reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
         {
             if (StringCchPrintfW(pszDest, 280ui64, L"DefaultUninstall 132 %ws", fullInfPath.c_str()) < 0)
             {
@@ -1080,17 +1092,31 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
 
             logger->verbose(1, "Calling InstallHinfSectionW");
 
+            g_RestartDialogExCalled = FALSE;
+
+            DetourTransactionBegin();
+            DetourUpdateThread(GetCurrentThread());
+            DetourAttach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
+            DetourTransactionCommit();
+
             InstallHinfSectionW(nullptr, nullptr, pszDest, 0);
 
+            DetourTransactionBegin();
+            DetourUpdateThread(GetCurrentThread());
+            DetourDetach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
+            DetourTransactionCommit();
+
             logger->verbose(1, "InstallHinfSectionW finished");
+
+            if (rebootRequired)
+                *rebootRequired = g_RestartDialogExCalled;
         }
         else
         {
             logger->error("No DefaultUninstall section found");
             errCode = ERROR_SECTION_NOT_FOUND;
         }
-    }
-    while (FALSE);
+    } while (FALSE);
 
     if (hInf != INVALID_HANDLE_VALUE)
     {
@@ -1103,6 +1129,9 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
     return errCode == ERROR_SUCCESS;
 }
 
+//
+// Hooks MessageBoxW which is called if an error occurred, even when instructed to suppress any UI interaction
+// 
 int DetourMessageBoxW(
     HWND hWnd,
     LPCWSTR lpText,
@@ -1112,9 +1141,9 @@ int DetourMessageBoxW(
 {
     el::Logger* logger = el::Loggers::getLogger("default");
 
-    hWnd;
-    lpCaption;
-    uType;
+    UNREFERENCED_PARAMETER(hWnd);
+    UNREFERENCED_PARAMETER(lpCaption);
+    UNREFERENCED_PARAMETER(uType);
 
     logger->verbose(1, "DetourMessageBoxW called with message: %v", std::wstring(lpText));
     logger->verbose(1, "GetLastError: %v", GetLastError());
@@ -1122,4 +1151,36 @@ int DetourMessageBoxW(
     g_MbCalled = TRUE;
 
     return IDOK;
+}
+
+//
+// Hooks RestartDialogEx which is called if a reboot is required, even when instructed to suppress any UI interaction
+// 
+int DetourRestartDialogEx(
+    HWND hwnd,
+    PCWSTR pszPrompt,
+    DWORD dwReturn,
+    DWORD dwReasonCode
+)
+{
+    el::Logger* logger = el::Loggers::getLogger("default");
+
+    UNREFERENCED_PARAMETER(hwnd);
+    UNREFERENCED_PARAMETER(pszPrompt);
+
+    logger->verbose(1, "DetourRestartDialogEx called");
+    logger->verbose(1, "GetLastError: %v", GetLastError());
+    logger->verbose(1, "DetourRestartDialogEx - dwReturn: %v", dwReturn);
+    logger->verbose(1, "DetourRestartDialogEx - dwReasonCode: %v", dwReasonCode);
+
+    /* for debugging
+
+    const int result = real_RestartDialogEx(hwnd, pszPrompt, dwReturn, dwReasonCode);
+
+    logger->verbose(1, "RestartDialogEx returned: %v", result);
+    */
+
+    g_RestartDialogExCalled = TRUE;
+
+    return IDCANCEL; // equivalent to the user clicking "Restart Later"
 }
