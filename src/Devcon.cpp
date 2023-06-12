@@ -1016,7 +1016,7 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
         }
 
         Newdev newdev;
-        BOOL reboot;
+        BOOL reboot = FALSE;
 
         if (!newdev.pDiInstallDriverW)
         {
