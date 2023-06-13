@@ -732,9 +732,6 @@ int main(int argc, char* argv[])
 
     if (cmdl[{ "--find-hwid" }])
     {
-        int errorCode;
-      //  if (!IsAdmin(errorCode)) return errorCode;
-
         hwId = cmdl({ "--hardware-id" }).str();
 
         if (hwId.empty()) {
@@ -742,7 +739,10 @@ int main(int argc, char* argv[])
             std::cout << color(red) << "Hardware ID missing" << std::endl;
             return EXIT_FAILURE;
         }
-        devcon::find_hwid(ConvertAnsiToWide(hwId));
+        if (!devcon::find_hwid(ConvertAnsiToWide(hwId)))
+        {
+            return GetLastError(); 
+        }
         return EXIT_SUCCESS;
     }
 

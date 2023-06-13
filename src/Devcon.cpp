@@ -1139,6 +1139,7 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
 
 bool devcon::find_hwid(const std::wstring& matchstring)
 {
+    el::Logger* logger = el::Loggers::getLogger("default");
     bool found = FALSE;
     DWORD devIndex, err, total = 0;
     HDEVINFO hDevInfo;
@@ -1204,17 +1205,15 @@ bool devcon::find_hwid(const std::wstring& matchstring)
         }
         // If we have a match, print out the whole array
         if (found_match) {
-            if (total++ > 0)
-                std::wcout << std::endl;
-            std::wcout << L"Hardware IDs: ";
+            found = TRUE;
+            total++;
+            logger->verbose(1, "Hardware IDs: ");
             for (int i = 0; i < arraybuf.size(); i++) {
-                std::wcout << arraybuf[i] << std::endl;
+                logger->verbose(1, "%v", arraybuf[i]);
             }
-
-            //total++;
             while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
                 &spDevInfoData,
-                SPDRP_FRIENDLYNAME,
+                SPDRP_DEVICEDESC,
                 &DataT,
                 (PBYTE)buffer,
                 buffersize,
@@ -1240,7 +1239,7 @@ bool devcon::find_hwid(const std::wstring& matchstring)
                 // Lets try SPDRP_DEVICEDESC
                 while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
                     &spDevInfoData,
-                    SPDRP_DEVICEDESC,
+                    SPDRP_FRIENDLYNAME,
                     &DataT,
                     (PBYTE)buffer,
                     buffersize,
@@ -1263,12 +1262,12 @@ bool devcon::find_hwid(const std::wstring& matchstring)
                 }
                 if (GetLastError() != ERROR_INVALID_DATA)
                 {
-                    std::wcout << L"Name: " << buffer << std::endl;
+                    logger->verbose(1, "Name: %v", std::wstring(buffer));
                 }
             }
             else
             {
-                std::wcout << L"FriendlyName: " << buffer << std::endl;
+                logger->verbose(1, "Name: %v", std::wstring(buffer));
             }
             // Build a list of driver info items that we will retrieve below
             if (!SetupDiBuildDriverInfoList(hDevInfo, &spDevInfoData, SPDIT_COMPATDRIVER))
@@ -1280,18 +1279,20 @@ bool devcon::find_hwid(const std::wstring& matchstring)
             if (!SetupDiEnumDriverInfo(hDevInfo, &spDevInfoData, SPDIT_COMPATDRIVER, 0, &drvInfo))
                 goto cleanup_DeviceInfo; // Still fails with "no more items"
 
-            std::wcout << L"Version: " <<  std::to_wstring((drvInfo.DriverVersion >> 48) & 0xFFFF);
-            std::wcout << L"." << std::to_wstring((drvInfo.DriverVersion >> 32) & 0xFFFF);
-            std::wcout << L"." << std::to_wstring((drvInfo.DriverVersion >> 16) & 0xFFFF);
-            std::wcout << L"." << std::to_wstring(drvInfo.DriverVersion & 0x0000FFFF) << std::endl;
-        }
+            logger->verbose(1, "Version: %v.%v.%v.%v", std::to_wstring((drvInfo.DriverVersion >> 48) & 0xFFFF),
+                std::to_wstring((drvInfo.DriverVersion >> 32) & 0xFFFF),
+                std::to_wstring((drvInfo.DriverVersion >> 16) & 0xFFFF),
+                std::to_wstring(drvInfo.DriverVersion & 0x0000FFFF));
+       }
     }
 
  cleanup_DeviceInfo:
      err = GetLastError();
      SetupDiDestroyDeviceInfoList(hDevInfo);
+     if (!found && err == ERROR_SUCCESS)
+         err = ERROR_FILE_NOT_FOUND;
      SetLastError(err);
-     std::wcout << L"Total Found: " << std::to_wstring(total) << std::endl;
+     logger->verbose(1, "Total Found:: %v", std::to_wstring(total));
      return found;
 
 }
