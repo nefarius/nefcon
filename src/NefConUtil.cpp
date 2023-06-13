@@ -730,6 +730,22 @@ int main(int argc, char* argv[])
         return EXIT_SUCCESS;
     }
 
+    if (cmdl[{ "--find-hwid" }])
+    {
+        hwId = cmdl({ "--hardware-id" }).str();
+
+        if (hwId.empty()) {
+            logger->error("Hardware ID missing");
+            std::cout << color(red) << "Hardware ID missing" << std::endl;
+            return EXIT_FAILURE;
+        }
+        if (!devcon::find_hwid(ConvertAnsiToWide(hwId)))
+        {
+            return ERROR_NOT_FOUND;
+        }
+        return EXIT_SUCCESS;
+    }
+
 #pragma endregion
 
     if (cmdl[{ "-v", "--version" }])
@@ -783,7 +799,9 @@ int main(int argc, char* argv[])
     std::cout << "    --inf-default-uninstall    Uninstalls an INF file with a [DefaultUninstall] section" << std::endl;
     std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << std::endl;
     std::cout << "    --delete-file-on-reboot    Marks a given file to get deleted on next reboot" << std::endl;
-    std::cout << "      --file-path                The absolute path of the file to remove (required)" << std::endl;
+    std::cout << "      --file-path              The absolute path of the file to remove (required)" << std::endl;
+    std::cout << "    --find-hwid                Shows the devices matching the wildcard hwid" << std::endl;
+    std::cout << "      ---hardware-id           Hardware ID (or partial) of the device for matching (required)" << std::endl;
     std::cout << "    -v, --version              Display version of this utility" << std::endl;
     std::cout << std::endl;
     std::cout << "  logging:" << std::endl;

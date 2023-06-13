@@ -17,6 +17,8 @@
 // STL
 // 
 #include <vector>
+#include <iomanip>
+
 
 //
 // Logging
@@ -1134,6 +1136,164 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
     SetLastError(errCode);
     return errCode == ERROR_SUCCESS;
 }
+
+bool devcon::find_hwid(const std::wstring& matchstring)
+{
+    el::Logger* logger = el::Loggers::getLogger("default");
+    bool found = FALSE;
+    DWORD devIndex, err, total = 0;
+    HDEVINFO hDevInfo;
+    SP_DEVINFO_DATA spDevInfoData;
+
+    DWORD DataT;
+    LPTSTR buffer = nullptr;
+    DWORD buffersize = 0;
+
+    hDevInfo = SetupDiGetClassDevs(
+        nullptr,
+        nullptr,
+        nullptr,
+        DIGCF_ALLCLASSES | DIGCF_PRESENT
+    );
+    if (hDevInfo == INVALID_HANDLE_VALUE)
+    {
+        return found;
+    }
+
+    spDevInfoData.cbSize = sizeof(spDevInfoData);
+    for (devIndex = 0; SetupDiEnumDeviceInfo(hDevInfo, devIndex, &spDevInfoData); devIndex++) {
+        // get all devices info
+        while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
+            &spDevInfoData,
+            SPDRP_HARDWAREID,
+            &DataT,
+            (PBYTE)buffer,
+            buffersize,
+            &buffersize))
+        {
+            if (GetLastError() == ERROR_INVALID_DATA)
+            {
+                break;
+            }
+            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+            {
+                if (buffer)
+                    LocalFree(buffer);
+                buffer = static_cast<wchar_t*>(LocalAlloc(LPTR, buffersize));
+            }
+            else
+            {
+                goto cleanup_DeviceInfo;
+            }
+        }
+        if (GetLastError() == ERROR_INVALID_DATA)
+            continue;
+
+        std::vector<std::wstring> arraybuf;
+        const TCHAR* p = buffer;
+        while (*p)               
+        {
+            arraybuf.push_back(p);
+            p += _tcslen(p) + 1;  
+        }
+        bool found_match = FALSE;
+        for (int i = 0; i < arraybuf.size(); i++) {
+            if (arraybuf[i].find(matchstring) != std::wstring::npos) {
+                found_match = TRUE;
+                break;
+            }
+        }
+        // If we have a match, print out the whole array
+        if (found_match) {
+            found = TRUE;
+            total++;
+            logger->verbose(1, "Hardware IDs: ");
+            for (int i = 0; i < arraybuf.size(); i++) {
+                logger->verbose(1, "%v", arraybuf[i]);
+            }
+            while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
+                &spDevInfoData,
+                SPDRP_DEVICEDESC,
+                &DataT,
+                (PBYTE)buffer,
+                buffersize,
+                &buffersize))
+            {
+                if (GetLastError() == ERROR_INVALID_DATA)
+                {
+                    break;
+                }
+                if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+                {
+                    if (buffer)
+                        LocalFree(buffer);
+                    buffer = static_cast<wchar_t*>(LocalAlloc(LPTR, buffersize));
+                }
+                else
+                {
+                    goto cleanup_DeviceInfo;
+                }
+            }
+            if (GetLastError() == ERROR_INVALID_DATA)
+            {
+                // Lets try SPDRP_DEVICEDESC
+                while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
+                    &spDevInfoData,
+                    SPDRP_FRIENDLYNAME,
+                    &DataT,
+                    (PBYTE)buffer,
+                    buffersize,
+                    &buffersize))
+                {
+                    if (GetLastError() == ERROR_INVALID_DATA)
+                    {
+                        break;
+                    }
+                    if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+                    {
+                        if (buffer)
+                            LocalFree(buffer);
+                        buffer = static_cast<wchar_t*>(LocalAlloc(LPTR, buffersize));
+                    }
+                    else
+                    {
+                        goto cleanup_DeviceInfo;
+                    }
+                }
+                if (GetLastError() != ERROR_INVALID_DATA)
+                {
+                    logger->verbose(1, "Name: %v", std::wstring(buffer));
+                }
+            }
+            else
+            {
+                logger->verbose(1, "Name: %v", std::wstring(buffer));
+            }
+            // Build a list of driver info items that we will retrieve below
+            if (!SetupDiBuildDriverInfoList(hDevInfo, &spDevInfoData, SPDIT_COMPATDRIVER))
+                goto cleanup_DeviceInfo;
+
+            // Get the first info item for this driver
+            SP_DRVINFO_DATA drvInfo;
+            drvInfo.cbSize = sizeof(SP_DRVINFO_DATA);
+            if (!SetupDiEnumDriverInfo(hDevInfo, &spDevInfoData, SPDIT_COMPATDRIVER, 0, &drvInfo))
+                goto cleanup_DeviceInfo; // Still fails with "no more items"
+
+            logger->verbose(1, "Version: %v.%v.%v.%v", std::to_wstring((drvInfo.DriverVersion >> 48) & 0xFFFF),
+                std::to_wstring((drvInfo.DriverVersion >> 32) & 0xFFFF),
+                std::to_wstring((drvInfo.DriverVersion >> 16) & 0xFFFF),
+                std::to_wstring(drvInfo.DriverVersion & 0x0000FFFF));
+       }
+    }
+
+ cleanup_DeviceInfo:
+     err = GetLastError();
+     SetupDiDestroyDeviceInfoList(hDevInfo);
+     SetLastError(err);
+     logger->verbose(1, "Total Found:: %v", std::to_wstring(total));
+     return found;
+}
+
 
 //
 // Hooks MessageBoxW which is called if an error occurred, even when instructed to suppress any UI interaction
