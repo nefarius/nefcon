@@ -741,7 +741,7 @@ int main(int argc, char* argv[])
         }
         if (!devcon::find_hwid(ConvertAnsiToWide(hwId)))
         {
-            return GetLastError(); 
+            return ERROR_NOT_FOUND;
         }
         return EXIT_SUCCESS;
     }

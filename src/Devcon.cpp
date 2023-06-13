@@ -1289,12 +1289,9 @@ bool devcon::find_hwid(const std::wstring& matchstring)
  cleanup_DeviceInfo:
      err = GetLastError();
      SetupDiDestroyDeviceInfoList(hDevInfo);
-     if (!found && err == ERROR_SUCCESS)
-         err = ERROR_FILE_NOT_FOUND;
      SetLastError(err);
      logger->verbose(1, "Total Found:: %v", std::to_wstring(total));
      return found;
-
 }
 
 
