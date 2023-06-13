@@ -34,5 +34,5 @@ namespace devcon
 
 	bool inf_default_uninstall(const std::wstring& fullInfPath, bool* rebootRequired);
 
-    bool find_hwid(const std::wstring& matchstring);
+    bool find_by_hwid(const std::wstring& matchstring);
 };

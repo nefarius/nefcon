@@ -739,7 +739,7 @@ int main(int argc, char* argv[])
             std::cout << color(red) << "Hardware ID missing" << std::endl;
             return EXIT_FAILURE;
         }
-        if (!devcon::find_hwid(ConvertAnsiToWide(hwId)))
+        if (!devcon::find_by_hwid(ConvertAnsiToWide(hwId)))
         {
             return ERROR_NOT_FOUND;
         }
@@ -800,8 +800,8 @@ int main(int argc, char* argv[])
     std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << std::endl;
     std::cout << "    --delete-file-on-reboot    Marks a given file to get deleted on next reboot" << std::endl;
     std::cout << "      --file-path              The absolute path of the file to remove (required)" << std::endl;
-    std::cout << "    --find-hwid                Shows the devices matching the wildcard hwid" << std::endl;
-    std::cout << "      ---hardware-id           Hardware ID (or partial) of the device for matching (required)" << std::endl;
+    std::cout << "    --find-hwid                Shows one or more devices matching a partial Hardware ID" << std::endl;
+    std::cout << "      ---hardware-id           (Partial) Hardware ID of the device to match against (required)" << std::endl;
     std::cout << "    -v, --version              Display version of this utility" << std::endl;
     std::cout << std::endl;
     std::cout << "  logging:" << std::endl;
