@@ -17,6 +17,8 @@
 // STL
 // 
 #include <vector>
+#include <iomanip>
+
 
 //
 // Logging
@@ -1134,6 +1136,154 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
     SetLastError(errCode);
     return errCode == ERROR_SUCCESS;
 }
+
+bool devcon::find_hwid(const std::wstring& matchstring)
+{
+    HDEVINFO devs = INVALID_HANDLE_VALUE;
+//    IdEntry* templ = NULL;
+//    int failcode = EXIT_FAIL;
+    int retcode;
+    int argIndex;
+    DWORD devIndex;
+    SP_DEVINFO_DATA devInfo;
+    SP_DEVINFO_LIST_DETAIL_DATA devInfoListDetail;
+    BOOL doSearch = FALSE;
+//    BOOL match;
+//    BOOL all = FALSE;
+//    GUID cls;
+//    DWORD numClass = 0;
+//    int skip = 0;
+
+    LPTSTR buffer;
+    DWORD size;
+    DWORD reqSize;
+    DWORD dataType;
+    size = 8192; // initial guess, nothing magic about this
+    buffer = new TCHAR[(size / sizeof(TCHAR)) + 2];
+    if (!buffer) {
+        return FALSE;
+    }
+
+        devs = SetupDiGetClassDevsW(NULL,
+            NULL,
+            NULL,
+            DIGCF_ALLCLASSES | DIGCF_PRESENT);
+
+    if (devs == INVALID_HANDLE_VALUE) {
+        return FALSE;
+    }
+
+#if 0
+    devInfoListDetail.cbSize = sizeof(devInfoListDetail);
+    if (!SetupDiGetDeviceInfoListDetail(devs, &devInfoListDetail)) {
+        goto final;
+    }
+#endif
+    //
+    // now enumerate them
+    //
+
+    devInfo.cbSize = sizeof(devInfo);
+    for (devIndex = 0; SetupDiEnumDeviceInfo(devs, devIndex, &devInfo); devIndex++) {
+    //    std::cout << "devIndex = " << devIndex << std::endl;
+#if 0
+        TCHAR devID[MAX_DEVICE_ID_LEN];
+                LPTSTR* hwIds = NULL;
+                LPTSTR* compatIds = NULL;
+                //
+                // determine instance ID
+                //
+                if (CM_Get_Device_ID_Ex(devInfo.DevInst, devID, MAX_DEVICE_ID_LEN, 0, devInfoListDetail.RemoteMachineHandle) != CR_SUCCESS) {
+                    devID[0] = TEXT('\0');
+                }
+#endif
+                while (!SetupDiGetDeviceRegistryProperty(devs, &devInfo, SPDRP_HARDWAREID, &dataType, (LPBYTE)buffer, size, &reqSize)) {
+                    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+                        goto loop;
+                    }
+                    if (dataType != REG_MULTI_SZ) {
+                        goto loop;
+                    }
+                    size = reqSize;
+                    delete[] buffer;
+                    buffer = new TCHAR[(size / sizeof(TCHAR)) + 2];
+                    if (!buffer) {
+                        goto failed;
+                    }
+                }
+    loop:
+          //       std::wcout << "Buffer from SetupDiGetDeviceRegistryProperty is " << buffer << std::endl;
+                //CStringArray strings;
+                std::vector<std::wstring> arraybuf;
+                const TCHAR* p = buffer;
+                while (*p)               // while not at the end of strings
+                {
+                    arraybuf.push_back(p);
+                    //strings.Add(p);        // add string to array
+                    p += _tcslen(p) + 1;  // find next string
+                }
+
+                //delete[] buffer;
+                // Print Strings stored in Vector
+                for (int i = 0; i < arraybuf.size(); i++) {
+                    if (arraybuf[i].find(matchstring) != std::wstring::npos) {
+      //                  std::cout << "found!" << '\n';
+                        std::wcout << L"Hardware ID: " << arraybuf[i] << std::endl;
+                        while (!SetupDiGetDeviceRegistryProperty(devs, &devInfo, SPDRP_DEVICEDESC, &dataType, (LPBYTE)buffer, size, &reqSize)) {
+                            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+                                goto loop2;
+                            }
+                            size = reqSize;
+                            delete[] buffer;
+                            buffer = new TCHAR[(size / sizeof(TCHAR)) + 2];
+                            if (!buffer) {
+                                goto failed;
+                            }
+                        }
+                        std::wcout << L"Name: " << buffer << std::endl;
+                        // Build a list of driver info items that we will retrieve below
+                        if (!SetupDiBuildDriverInfoList(devs, &devInfo, SPDIT_COMPATDRIVER))
+                            printf("err - %x\n", GetLastError());
+
+                        // Get the first info item for this driver
+                        SP_DRVINFO_DATA drvInfo;
+                        drvInfo.cbSize = sizeof(SP_DRVINFO_DATA);
+                        if (!SetupDiEnumDriverInfo(devs, &devInfo, SPDIT_COMPATDRIVER, 0, &drvInfo))
+                            printf("err - %x\n", GetLastError()); // Still fails with "no more items"
+                        else
+  //                      std::wcout << L"Version: 0x" << std::uppercase << std::setfill(L'0') << std::setw(4) << std::hex << (drvInfo.DriverVersion >> 32);
+  //                      std::wcout << L" 0x" << std::uppercase << std::setfill(L'0') << std::setw(4) << std::hex << (drvInfo.DriverVersion & 0xffffffffULL) << std::endl;
+                        std::wcout << L"Version: " <<  std::to_wstring((drvInfo.DriverVersion >> 48) & 0xFFFF);
+                        std::wcout << L"." << std::to_wstring((drvInfo.DriverVersion >> 32) & 0xFFFF);
+                        std::wcout << L"." << std::to_wstring((drvInfo.DriverVersion >> 16) & 0xFFFF);
+                        std::wcout << L"." << std::to_wstring(drvInfo.DriverVersion & 0x0000FFFF) << std::endl;
+ 
+ //                           desc = GetDeviceStringProperty(Devs, DevInfo, SPDRP_DEVICEDESC);SPDRP_FRIENDLYNAME
+ 
+                    }
+                loop2:
+                    retcode = 1;
+                    //std::wcout << arraybuf[i] << std::endl;
+                }
+
+    }
+                //    hwIds = GetDevMultiSz(devs, &devInfo, SPDRP_HARDWAREID);
+                //    compatIds = GetDevMultiSz(devs, &devInfo, SPDRP_COMPATIBLEIDS);
+
+               //     if (WildCompareHwIds(hwIds, templ[argIndex]) ||
+                //        WildCompareHwIds(compatIds, templ[argIndex])) {
+                //        match = TRUE;
+                //    }
+
+     final:
+     failed:
+    if (devs != INVALID_HANDLE_VALUE) {
+        SetupDiDestroyDeviceInfoList(devs);
+    }
+    return TRUE;
+
+}
+
 
 //
 // Hooks MessageBoxW which is called if an error occurred, even when instructed to suppress any UI interaction
