@@ -15,44 +15,11 @@ INITIALIZE_EASYLOGGINGPP
 processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 
-bool IsCurlyBracket(char c)
-{
-    switch (c)
-    {
-    case '{':
-    case '}':
-        return true;
-    default:
-        return false;
-    }
-}
+static bool IsAdmin(int& errorCode);
 
-bool IsAdmin(int& errorCode)
-{
-    el::Logger* logger = el::Loggers::getLogger("default");
-    BOOL isAdmin = FALSE;
+using GUIDFromString_t = BOOL(WINAPI*)(_In_ LPCSTR, _Out_ LPGUID);
 
-    if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
-    {
-        logger->error("Failed to determine elevation status, error: ",
-            winapi::GetLastErrorStdStr());
-        std::cout << color(red) <<
-            "Failed to determine elevation status, error: "
-            << winapi::GetLastErrorStdStr() << std::endl;
-        errorCode = EXIT_FAILURE;
-        return false;
-    }
-
-    if (!isAdmin)
-    {
-        logger->error("This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled.");
-        std::cout << color(red) << "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled." << std::endl;
-        errorCode = EXIT_FAILURE;
-        return false;
-    }
-
-    return true;
-}
+static bool GUIDFromString(const std::string& input, GUID* guid);
 
 
 #if defined(NEFCON_WINMAIN)
@@ -78,7 +45,7 @@ int main(int argc, char* argv[])
         "--display-name",
         "--bin-path",
         "--file-path"
-        });
+    });
 
 #if defined(NEFCON_WINMAIN)
     LPWSTR* szArglist;
@@ -123,32 +90,36 @@ int main(int argc, char* argv[])
         int errorCode;
         if (!IsAdmin(errorCode)) return errorCode;
 
-        if (!(cmdl({ "--position" }) >> position)) {
+        if (!(cmdl({"--position"}) >> position))
+        {
             logger->error("Position missing");
             std::cout << color(red) << "Position missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        if (!(cmdl({ "--service-name" }) >> serviceName)) {
+        if (!(cmdl({"--service-name"}) >> serviceName))
+        {
             logger->error("Filter Service Name missing");
             std::cout << color(red) << "Filter Service Name missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        if (!(cmdl({ "--class-guid" }) >> classGuid)) {
+        if (!(cmdl({"--class-guid"}) >> classGuid))
+        {
             logger->error("Device Class GUID missing");
             std::cout << color(red) << "Device Class GUID missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        classGuid.erase(std::remove_if(classGuid.begin(), classGuid.end(), &IsCurlyBracket), classGuid.end());
-
         GUID clID;
 
-        if (UuidFromStringA(reinterpret_cast<RPC_CSTR>(&classGuid[0]), &clID) == RPC_S_INVALID_STRING_UUID)
+        if (!GUIDFromString(classGuid, &clID))
         {
-            logger->error("Device Class GUID format invalid, expected format (no brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
-            std::cout << color(red) << "Device Class GUID format invalid, expected format (no brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" << std::endl;
+            logger->error(
+                "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
+            std::cout << color(red) <<
+                "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -171,7 +142,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = devcon::add_device_class_filter(&clID, ConvertAnsiToWide(serviceName), pos);
+        auto ret = add_device_class_filter(&clID, ConvertAnsiToWide(serviceName), pos);
 
         if (ret)
         {
@@ -184,7 +155,7 @@ int main(int argc, char* argv[])
         }
 
         logger->error("Failed to modify filter value, error: %v",
-            winapi::GetLastErrorStdStr());
+                      winapi::GetLastErrorStdStr());
         std::cout << color(red) <<
             "Failed to modify filter value, error: "
             << winapi::GetLastErrorStdStr() << std::endl;
@@ -196,19 +167,22 @@ int main(int argc, char* argv[])
         int errorCode;
         if (!IsAdmin(errorCode)) return errorCode;
 
-        if (!(cmdl({ "--position" }) >> position)) {
+        if (!(cmdl({"--position"}) >> position))
+        {
             logger->error("Position missing");
             std::cout << color(red) << "Position missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        if (!(cmdl({ "--service-name" }) >> serviceName)) {
+        if (!(cmdl({"--service-name"}) >> serviceName))
+        {
             logger->error("Filter Service Name missing");
             std::cout << color(red) << "Filter Service Name missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        if (!(cmdl({ "--class-guid" }) >> classGuid)) {
+        if (!(cmdl({"--class-guid"}) >> classGuid))
+        {
             logger->error("Device Class GUID missing");
             std::cout << color(red) << "Device Class GUID missing" << std::endl;
             return EXIT_FAILURE;
@@ -216,10 +190,13 @@ int main(int argc, char* argv[])
 
         GUID clID;
 
-        if (UuidFromStringA(reinterpret_cast<RPC_CSTR>(&classGuid[0]), &clID) == RPC_S_INVALID_STRING_UUID)
+        if (!GUIDFromString(classGuid, &clID))
         {
-            logger->error("Device Class GUID format invalid, expected format (no brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
-            std::cout << color(red) << "Device Class GUID format invalid, expected format (no brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" << std::endl;
+            logger->error(
+                "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
+            std::cout << color(red) <<
+                "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -242,7 +219,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = devcon::remove_device_class_filter(&clID, ConvertAnsiToWide(serviceName), pos);
+        auto ret = remove_device_class_filter(&clID, ConvertAnsiToWide(serviceName), pos);
 
         if (ret)
         {
@@ -255,7 +232,7 @@ int main(int argc, char* argv[])
         }
 
         logger->error("Failed to modify filter value, error: %v",
-            winapi::GetLastErrorStdStr());
+                      winapi::GetLastErrorStdStr());
         std::cout << color(red) <<
             "Failed to modify filter value, error: "
             << winapi::GetLastErrorStdStr() << std::endl;
@@ -266,14 +243,15 @@ int main(int argc, char* argv[])
 
 #pragma region Generic driver installer
 
-    if (cmdl[{ "--install-driver" }])
+    if (cmdl[{"--install-driver"}])
     {
         int errorCode;
         if (!IsAdmin(errorCode)) return errorCode;
 
-        infPath = cmdl({ "--inf-path" }).str();
+        infPath = cmdl({"--inf-path"}).str();
 
-        if (infPath.empty()) {
+        if (infPath.empty())
+        {
             logger->error("INF path missing");
             std::cout << color(red) << "INF path missing" << std::endl;
             return EXIT_FAILURE;
@@ -300,7 +278,7 @@ int main(int argc, char* argv[])
         if (!devcon::install_driver(ConvertAnsiToWide(infPath), &rebootRequired))
         {
             logger->error("Failed to install driver, error: %v",
-                winapi::GetLastErrorStdStr());
+                          winapi::GetLastErrorStdStr());
             std::cout << color(red) <<
                 "Failed to install driver, error: "
                 << winapi::GetLastErrorStdStr() << std::endl;
@@ -313,14 +291,15 @@ int main(int argc, char* argv[])
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
     }
 
-    if (cmdl[{ "--uninstall-driver" }])
+    if (cmdl[{"--uninstall-driver"}])
     {
         int errorCode;
         if (!IsAdmin(errorCode)) return errorCode;
 
-        infPath = cmdl({ "--inf-path" }).str();
+        infPath = cmdl({"--inf-path"}).str();
 
-        if (infPath.empty()) {
+        if (infPath.empty())
+        {
             logger->error("INF path missing");
             std::cout << color(red) << "INF path missing" << std::endl;
             return EXIT_FAILURE;
@@ -347,7 +326,7 @@ int main(int argc, char* argv[])
         if (!devcon::uninstall_driver(ConvertAnsiToWide(infPath), &rebootRequired))
         {
             logger->error("Failed to uninstall driver, error: %v",
-                winapi::GetLastErrorStdStr());
+                          winapi::GetLastErrorStdStr());
             std::cout << color(red) <<
                 "Failed to uninstall driver, error: "
                 << winapi::GetLastErrorStdStr() << std::endl;
@@ -360,14 +339,15 @@ int main(int argc, char* argv[])
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
     }
 
-    if (cmdl[{ "--create-driver-service" }])
+    if (cmdl[{"--create-driver-service"}])
     {
         int errorCode;
         if (!IsAdmin(errorCode)) return errorCode;
 
-        binPath = cmdl({ "--bin-path" }).str();
+        binPath = cmdl({"--bin-path"}).str();
 
-        if (binPath.empty()) {
+        if (binPath.empty())
+        {
             logger->error("Binary path missing");
             std::cout << color(red) << "Binary path missing" << std::endl;
             return EXIT_FAILURE;
@@ -389,15 +369,17 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (!(cmdl({ "--service-name" }) >> serviceName)) {
+        if (!(cmdl({"--service-name"}) >> serviceName))
+        {
             logger->error("Service name missing");
             std::cout << color(red) << "Service name missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        displayName = cmdl({ "--display-name" }).str();
+        displayName = cmdl({"--display-name"}).str();
 
-        if (displayName.empty()) {
+        if (displayName.empty())
+        {
             logger->error("Display name missing");
             std::cout << color(red) << "Display name missing" << std::endl;
             return EXIT_FAILURE;
@@ -406,7 +388,7 @@ int main(int argc, char* argv[])
         if (!winapi::CreateDriverService(serviceName.c_str(), displayName.c_str(), binPath.c_str()))
         {
             logger->error("Failed to create driver service, error: %v",
-                winapi::GetLastErrorStdStr());
+                          winapi::GetLastErrorStdStr());
             std::cout << color(red) <<
                 "Failed to create driver service, error: "
                 << winapi::GetLastErrorStdStr() << std::endl;
@@ -419,12 +401,13 @@ int main(int argc, char* argv[])
         return EXIT_SUCCESS;
     }
 
-    if (cmdl[{ "--remove-driver-service" }])
+    if (cmdl[{"--remove-driver-service"}])
     {
         int errorCode;
         if (!IsAdmin(errorCode)) return errorCode;
 
-        if (!(cmdl({ "--service-name" }) >> serviceName)) {
+        if (!(cmdl({"--service-name"}) >> serviceName))
+        {
             logger->error("Service name missing");
             std::cout << color(red) << "Service name missing" << std::endl;
             return EXIT_FAILURE;
@@ -433,7 +416,7 @@ int main(int argc, char* argv[])
         if (!winapi::DeleteDriverService(serviceName.c_str()))
         {
             logger->error("Failed to remove driver service, error: %v",
-                winapi::GetLastErrorStdStr());
+                          winapi::GetLastErrorStdStr());
             std::cout << color(red) <<
                 "Failed to remove driver service, error: "
                 << winapi::GetLastErrorStdStr() << std::endl;
@@ -446,37 +429,41 @@ int main(int argc, char* argv[])
         return EXIT_SUCCESS;
     }
 
-    if (cmdl[{ "--create-device-node" }])
+    if (cmdl[{"--create-device-node"}])
     {
         int errorCode;
         if (!IsAdmin(errorCode)) return errorCode;
 
-        if (!(cmdl({ "--hardware-id" }) >> hwId)) {
+        if (!(cmdl({"--hardware-id"}) >> hwId))
+        {
             logger->error("Hardware ID missing");
             std::cout << color(red) << "Hardware ID missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        if (!(cmdl({ "--class-name" }) >> className)) {
+        if (!(cmdl({"--class-name"}) >> className))
+        {
             logger->error("Device Class Name missing");
             std::cout << color(red) << "Device Class Name missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        if (!(cmdl({ "--class-guid" }) >> classGuid)) {
+        if (!(cmdl({"--class-guid"}) >> classGuid))
+        {
             logger->error("Device Class GUID missing");
             std::cout << color(red) << "Device Class GUID missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        classGuid.erase(std::remove_if(classGuid.begin(), classGuid.end(), &IsCurlyBracket), classGuid.end());
-
         GUID clID;
 
-        if (UuidFromStringA(reinterpret_cast<RPC_CSTR>(&classGuid[0]), &clID) == RPC_S_INVALID_STRING_UUID)
+        if (!GUIDFromString(classGuid, &clID))
         {
-            logger->error("Device Class GUID format invalid, expected format (no brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
-            std::cout << color(red) << "Device Class GUID format invalid, expected format (no brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" << std::endl;
+            logger->error(
+                "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
+            std::cout << color(red) <<
+                "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -485,7 +472,7 @@ int main(int argc, char* argv[])
         if (!ret)
         {
             logger->error("Failed to create device node, error: %v",
-                winapi::GetLastErrorStdStr());
+                          winapi::GetLastErrorStdStr());
             std::cout << color(red) <<
                 "Failed to create device node, error: "
                 << winapi::GetLastErrorStdStr() << std::endl;
@@ -498,33 +485,36 @@ int main(int argc, char* argv[])
         return EXIT_SUCCESS;
     }
 
-    if (cmdl[{ "--remove-device-node" }])
+    if (cmdl[{"--remove-device-node"}])
     {
         logger->verbose(1, "Invoked --remove-device-node");
 
         int errorCode;
         if (!IsAdmin(errorCode)) return errorCode;
 
-        if (!(cmdl({ "--hardware-id" }) >> hwId)) {
+        if (!(cmdl({"--hardware-id"}) >> hwId))
+        {
             logger->error("Hardware ID missing");
             std::cout << color(red) << "Hardware ID missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        if (!(cmdl({ "--class-guid" }) >> classGuid)) {
+        if (!(cmdl({"--class-guid"}) >> classGuid))
+        {
             logger->error("Device Class GUID missing");
             std::cout << color(red) << "Device Class GUID missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        classGuid.erase(std::remove_if(classGuid.begin(), classGuid.end(), &IsCurlyBracket), classGuid.end());
-
         GUID clID;
 
-        if (UuidFromStringA(reinterpret_cast<RPC_CSTR>(&classGuid[0]), &clID) == RPC_S_INVALID_STRING_UUID)
+        if (!GUIDFromString(classGuid, &clID))
         {
-            logger->error("Device Class GUID format invalid, expected format (no brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
-            std::cout << color(red) << "Device Class GUID format invalid, expected format (no brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" << std::endl;
+            logger->error(
+                "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
+            std::cout << color(red) <<
+                "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -535,7 +525,7 @@ int main(int argc, char* argv[])
         if (!ret)
         {
             logger->error("Failed to delete device node, error: %v",
-                winapi::GetLastErrorStdStr());
+                          winapi::GetLastErrorStdStr());
             std::cout << color(red) <<
                 "Failed to delete device node, error: "
                 << winapi::GetLastErrorStdStr() << std::endl;
@@ -548,16 +538,17 @@ int main(int argc, char* argv[])
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
     }
 
-    if (cmdl[{ "--inf-default-install" }])
+    if (cmdl[{"--inf-default-install"}])
     {
         logger->verbose(1, "Invoked --inf-default-install");
 
         int errorCode;
         if (!IsAdmin(errorCode)) return errorCode;
 
-        infPath = cmdl({ "--inf-path" }).str();
+        infPath = cmdl({"--inf-path"}).str();
 
-        if (infPath.empty()) {
+        if (infPath.empty())
+        {
             logger->error("INF path missing");
             std::cout << color(red) << "INF path missing" << std::endl;
             return EXIT_FAILURE;
@@ -584,7 +575,7 @@ int main(int argc, char* argv[])
         if (!devcon::inf_default_install(ConvertAnsiToWide(infPath), &rebootRequired))
         {
             logger->error("Failed to install INF file, error: %v",
-                winapi::GetLastErrorStdStr());
+                          winapi::GetLastErrorStdStr());
             std::cout << color(red) <<
                 "Failed to install INF file, error: "
                 << winapi::GetLastErrorStdStr() << std::endl;
@@ -605,14 +596,15 @@ int main(int argc, char* argv[])
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
     }
 
-    if (cmdl[{ "--inf-default-uninstall" }])
+    if (cmdl[{"--inf-default-uninstall"}])
     {
         int errorCode;
         if (!IsAdmin(errorCode)) return errorCode;
 
-        infPath = cmdl({ "--inf-path" }).str();
+        infPath = cmdl({"--inf-path"}).str();
 
-        if (infPath.empty()) {
+        if (infPath.empty())
+        {
             logger->error("INF path missing");
             std::cout << color(red) << "INF path missing" << std::endl;
             return EXIT_FAILURE;
@@ -639,7 +631,7 @@ int main(int argc, char* argv[])
         if (!devcon::inf_default_uninstall(ConvertAnsiToWide(infPath), &rebootRequired))
         {
             logger->error("Failed to uninstall INF file, error: %v",
-                winapi::GetLastErrorStdStr());
+                          winapi::GetLastErrorStdStr());
             std::cout << color(red) <<
                 "Failed to uninstall INF file, error: "
                 << winapi::GetLastErrorStdStr() << std::endl;
@@ -664,14 +656,15 @@ int main(int argc, char* argv[])
 
 #pragma region Other Utilities
 
-    if (cmdl[{ "--delete-file-on-reboot" }])
+    if (cmdl[{"--delete-file-on-reboot"}])
     {
         int errorCode;
         if (!IsAdmin(errorCode)) return errorCode;
 
-        filePath = cmdl({ "--file-path" }).str();
+        filePath = cmdl({"--file-path"}).str();
 
-        if (filePath.empty()) {
+        if (filePath.empty())
+        {
             logger->error("File path missing");
             std::cout << color(red) << "File path missing" << std::endl;
             return EXIT_FAILURE;
@@ -694,7 +687,7 @@ int main(int argc, char* argv[])
         }
 
     retryRemove:
-        const BOOL ret = MoveFileExA(filePath.c_str(), NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+        const BOOL ret = MoveFileExA(filePath.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
 
         // if this happens despite elevated permissions...
         if (!ret && GetLastError() == ERROR_ACCESS_DENIED)
@@ -703,7 +696,7 @@ int main(int argc, char* argv[])
             if (!winapi::TakeFileOwnership(logger, ConvertAnsiToWide(filePath).c_str()))
             {
                 logger->error("Failed to take ownership of file, error: %v",
-                    winapi::GetLastErrorStdStr());
+                              winapi::GetLastErrorStdStr());
                 std::cout << color(red) <<
                     "Failed to take ownership of file, error: "
                     << winapi::GetLastErrorStdStr() << std::endl;
@@ -711,13 +704,13 @@ int main(int argc, char* argv[])
             }
 
             // ...and try again
-            goto retryRemove;  // NOLINT(cppcoreguidelines-avoid-goto)
+            goto retryRemove; // NOLINT(cppcoreguidelines-avoid-goto)
         }
 
         if (!ret)
         {
             logger->error("Failed to register file for removal, error: %v",
-                winapi::GetLastErrorStdStr());
+                          winapi::GetLastErrorStdStr());
             std::cout << color(red) <<
                 "Failed to register file for removal, error: "
                 << winapi::GetLastErrorStdStr() << std::endl;
@@ -730,11 +723,12 @@ int main(int argc, char* argv[])
         return EXIT_SUCCESS;
     }
 
-    if (cmdl[{ "--find-hwid" }])
+    if (cmdl[{"--find-hwid"}])
     {
-        hwId = cmdl({ "--hardware-id" }).str();
+        hwId = cmdl({"--hardware-id"}).str();
 
-        if (hwId.empty()) {
+        if (hwId.empty())
+        {
             logger->error("Hardware ID missing");
             std::cout << color(red) << "Hardware ID missing" << std::endl;
             return EXIT_FAILURE;
@@ -748,7 +742,7 @@ int main(int argc, char* argv[])
 
 #pragma endregion
 
-    if (cmdl[{ "-v", "--version" }])
+    if (cmdl[{"-v", "--version"}])
     {
         std::cout << "nefcon version " <<
             winapi::GetVersionFromFile(winapi::GetImageBasePath())
@@ -801,15 +795,65 @@ int main(int argc, char* argv[])
     std::cout << "    --delete-file-on-reboot    Marks a given file to get deleted on next reboot" << std::endl;
     std::cout << "      --file-path              The absolute path of the file to remove (required)" << std::endl;
     std::cout << "    --find-hwid                Shows one or more devices matching a partial Hardware ID" << std::endl;
-    std::cout << "      ---hardware-id           (Partial) Hardware ID of the device to match against (required)" << std::endl;
+    std::cout << "      ---hardware-id           (Partial) Hardware ID of the device to match against (required)" <<
+        std::endl;
     std::cout << "    -v, --version              Display version of this utility" << std::endl;
     std::cout << std::endl;
     std::cout << "  logging:" << std::endl;
-    std::cout << "    --default-log-file=.\\log.txt       Write details of execution to a log file (optional)" << std::endl;
+    std::cout << "    --default-log-file=.\\log.txt       Write details of execution to a log file (optional)" <<
+        std::endl;
     std::cout << "    --verbose                          Turn on verbose/diagnostic logging (optional)" << std::endl;
     std::cout << std::endl;
 
 #pragma endregion
 
     return EXIT_SUCCESS;
+}
+
+static bool IsAdmin(int& errorCode)
+{
+    el::Logger* logger = el::Loggers::getLogger("default");
+    BOOL isAdmin = FALSE;
+
+    if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+    {
+        logger->error("Failed to determine elevation status, error: ",
+                      winapi::GetLastErrorStdStr());
+        std::cout << color(red) <<
+            "Failed to determine elevation status, error: "
+            << winapi::GetLastErrorStdStr() << std::endl;
+        errorCode = EXIT_FAILURE;
+        return false;
     }
+
+    if (!isAdmin)
+    {
+        logger->error(
+            "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled.");
+        std::cout << color(red) <<
+            "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled."
+            << std::endl;
+        errorCode = EXIT_FAILURE;
+        return false;
+    }
+
+    return true;
+}
+
+static bool GUIDFromString(const std::string& input, GUID* guid)
+{
+    if (UuidFromStringA(RPC_CSTR(input.data()), guid) == RPC_S_INVALID_STRING_UUID)
+    {
+        const HMODULE shell32 = LoadLibraryA("Shell32.dll");
+
+        if (shell32 == nullptr)
+            return false;
+
+        const auto pFnGUIDFromString = reinterpret_cast<GUIDFromString_t>(
+            GetProcAddress(shell32, MAKEINTRESOURCEA(703)));
+
+        return pFnGUIDFromString(input.c_str(), guid);
+    }
+
+    return true;
+}

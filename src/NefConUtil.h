@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <vector>
 #include <string>
+#include <optional>
 
 //
 // CLI argument parser
