@@ -40,7 +40,7 @@
 //
 // Logging
 // 
-#include "easylogging++.h"
+#include <easylogging++.h>
 
 //
 // Setup helpers

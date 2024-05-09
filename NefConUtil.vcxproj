@@ -521,13 +521,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include=".\src\Devcon.cpp" />
-    <ClCompile Include=".\src\easylogging++.cc" />
     <ClCompile Include=".\src\NefConSetup.cpp" />
     <ClCompile Include=".\src\NefConUtil.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include=".\src\Devcon.h" />
-    <ClInclude Include=".\src\easylogging++.h" />
     <ClInclude Include=".\src\framework.h" />
     <ClInclude Include=".\src\LibraryHelper.hpp" />
     <ClInclude Include=".\src\NefConSetup.h" />

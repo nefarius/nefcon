@@ -24,9 +24,6 @@
     <ClCompile Include=".\src\NefConSetup.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include=".\src\easylogging++.cc">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include=".\src\resource.h">
@@ -51,9 +48,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include=".\src\UniUtil.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include=".\src\easylogging++.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
