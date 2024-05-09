@@ -526,7 +526,6 @@
     <ClCompile Include=".\src\NefConUtil.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include=".\src\argh.h" />
     <ClInclude Include=".\src\Devcon.h" />
     <ClInclude Include=".\src\easylogging++.h" />
     <ClInclude Include=".\src\framework.h" />

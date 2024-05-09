@@ -29,9 +29,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include=".\src\argh.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include=".\src\resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>

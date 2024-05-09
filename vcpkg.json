@@ -5,6 +5,8 @@
   "license": "MIT",
   "supports": "!(arm | uwp)",
   "dependencies": [
-	"detours"
+    "argh",
+    "easyloggingpp",
+    "detours"
   ]
 }

@@ -30,7 +30,7 @@
 //
 // CLI argument parser
 // 
-#include "argh.h"
+#include <argh.h>
 
 //
 // Add some colors to console
