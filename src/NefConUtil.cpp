@@ -842,6 +842,7 @@ static bool IsAdmin(int& errorCode)
 
 static bool GUIDFromString(const std::string& input, GUID* guid)
 {
+    // try without brackets...
     if (UuidFromStringA(RPC_CSTR(input.data()), guid) == RPC_S_INVALID_STRING_UUID)
     {
         const HMODULE shell32 = LoadLibraryA("Shell32.dll");
@@ -852,6 +853,7 @@ static bool GUIDFromString(const std::string& input, GUID* guid)
         const auto pFnGUIDFromString = reinterpret_cast<GUIDFromString_t>(
             GetProcAddress(shell32, MAKEINTRESOURCEA(703)));
 
+        // ...finally try with brackets
         return pFnGUIDFromString(input.c_str(), guid);
     }
 
