@@ -1,10 +1,8 @@
-<img src="assets/NSS-128x128.png" align="right" />
-
-# nefcon
-
-Windows device driver installation and management tool.
+# <img src="assets/NSS-128x128.png" align="left" />nefcon
 
 [![MSBuild](https://github.com/nefarius/nefcon/actions/workflows/msbuild.yml/badge.svg)](https://github.com/nefarius/nefcon/actions/workflows/msbuild.yml) [![GitHub All Releases](https://img.shields.io/github/downloads/nefarius/nefcon/total)](https://somsubhra.github.io/github-release-stats/?username=nefarius&repository=nefcon)
+
+Windows device driver installation and management tool.
 
 ## About
 
