@@ -37,6 +37,8 @@
 // 
 #include <detours/detours.h>
 
+using namespace nefarius::util;
+
 static decltype(MessageBoxW)* real_MessageBoxW = MessageBoxW;
 
 int DetourMessageBoxW(
