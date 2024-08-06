@@ -1,3 +1,4 @@
+// ReSharper disable CppClangTidyCppcoreguidelinesAvoidGoto
 #include "Devcon.h"
 
 //
