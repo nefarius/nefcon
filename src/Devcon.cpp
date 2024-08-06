@@ -379,7 +379,7 @@ bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequire
     Newdev newdev;
     BOOL reboot;
 
-    if (!newdev.pDiInstallDriverW)
+    if (!newdev.CallDiInstallDriverW)
     {
         logger->error("Couldn't find DiInstallDriverW export");
         SetLastError(ERROR_INVALID_FUNCTION);
@@ -388,7 +388,7 @@ bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequire
 
     logger->verbose(1, "Invoking DiInstallDriverW");
 
-    const auto ret = newdev.pDiInstallDriverW(
+    const auto ret = newdev.CallDiInstallDriverW(
         nullptr,
         fullInfPath.c_str(),
         DIIRFLAG_FORCE_INF,
@@ -410,7 +410,7 @@ bool devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequi
     Newdev newdev;
     BOOL reboot;
 
-    if (!newdev.pDiUninstallDriverW)
+    if (!newdev.CallDiUninstallDriverW)
     {
         logger->error("Couldn't find DiUninstallDriverW export");
         SetLastError(ERROR_INVALID_FUNCTION);
@@ -419,7 +419,7 @@ bool devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequi
 
     logger->verbose(1, "Invoking DiUninstallDriverW");
 
-    const auto ret = newdev.pDiUninstallDriverW(
+    const auto ret = newdev.CallDiUninstallDriverW(
         nullptr,
         fullInfPath.c_str(),
         0,
@@ -671,7 +671,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
 
     Newdev newdev;
 
-    if (!newdev.pDiUninstallDevice || !newdev.pDiUninstallDriverW)
+    if (!newdev.CallDiUninstallDevice || !newdev.CallDiUninstallDriverW)
     {
         logger->error("Couldn't get DiUninstallDevice or DiUninstallDriverW function exports");
         SetLastError(ERROR_INVALID_FUNCTION);
@@ -773,7 +773,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
         //
         // Remove device
         // 
-        if (!newdev.pDiUninstallDevice(
+        if (!newdev.CallDiUninstallDevice(
             nullptr,
             hDevInfo,
             spDevInfoData,
@@ -789,7 +789,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
         //
         // Uninstall from driver store
         // 
-        if (!newdev.pDiUninstallDriverW(
+        if (!newdev.CallDiUninstallDriverW(
             nullptr,
             pDrvInfoDetailData->InfFileName,
             0,
@@ -1036,7 +1036,7 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
         Newdev newdev;
         BOOL reboot = FALSE;
 
-        if (!newdev.pDiInstallDriverW)
+        if (!newdev.CallDiInstallDriverW)
         {
             logger->error("Couldn't find DiInstallDriverW export");
             SetLastError(ERROR_INVALID_FUNCTION);
@@ -1045,7 +1045,7 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
 
         logger->verbose(1, "Invoking DiInstallDriverW");
 
-        const auto ret = newdev.pDiInstallDriverW(
+        const auto ret = newdev.CallDiInstallDriverW(
             nullptr,
             fullInfPath.c_str(),
             0,

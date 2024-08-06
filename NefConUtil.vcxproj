@@ -545,6 +545,7 @@
     <ClInclude Include=".\src\colorwin.hpp" />
     <ClInclude Include=".\src\resource.h" />
     <ClInclude Include=".\src\UniUtil.h" />
+    <ClInclude Include="src\MultiStringArray.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include=".\src\NefConUtil.rc" />
