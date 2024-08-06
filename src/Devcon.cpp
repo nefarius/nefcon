@@ -180,11 +180,9 @@ exit:
     return success;
 }
 
-std::expected<bool, DWORD> devcon::update(const std::wstring& hardwareId, const std::wstring& fullInfPath,
-                                          bool* rebootRequired, bool force)
+std::expected<bool, Win32Error> devcon::update(const std::wstring& hardwareId, const std::wstring& fullInfPath,
+                                               bool* rebootRequired, bool force)
 {
-    el::Logger* logger = el::Loggers::getLogger("default");
-
     Newdev newdev;
     DWORD flags = 0;
     BOOL reboot = FALSE;
@@ -202,17 +200,16 @@ std::expected<bool, DWORD> devcon::update(const std::wstring& hardwareId, const 
     ))
     {
     case FunctionCallResult::NotAvailable:
-        logger->error("Couldn't find DiInstallDriverW export");
-        return ERROR_INVALID_FUNCTION;
+        return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
     case FunctionCallResult::Failure:
-        return GetLastError();
+        return std::unexpected(Win32Error(GetLastError()));
     case FunctionCallResult::Success:
         if (rebootRequired)
-            *rebootRequired = reboot != FALSE;
+            *rebootRequired = reboot > 0;
         return true;
     }
 
-    return ERROR_INTERNAL_ERROR;
+    return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
 }
 
 bool devcon::restart_bth_usb_device()

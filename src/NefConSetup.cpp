@@ -140,6 +140,7 @@ BOOL winapi::DeleteDriverService(PCSTR ServiceName)
     return ret;
 }
 
+//__declspec(deprecated)
 std::string winapi::GetLastErrorStdStr(DWORD errorCode)
 {
     DWORD error = (errorCode == ERROR_SUCCESS) ? GetLastError() : errorCode;

@@ -53,6 +53,9 @@
     <ClInclude Include="src\MultiStringArray.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\Win32Error.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include=".\src\NefConUtil.rc">
