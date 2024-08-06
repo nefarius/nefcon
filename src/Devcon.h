@@ -28,6 +28,8 @@ namespace devcon
 	 */
 	bool create(const std::wstring& className, const GUID* classGuid, const std::wstring& hardwareId);
 
+    bool update(const std::wstring& hardwareId, const std::wstring& fullInfPath, bool* rebootRequired, bool force = false);
+
 	bool restart_bth_usb_device();
 
 	bool enable_disable_bth_usb_device(bool state);

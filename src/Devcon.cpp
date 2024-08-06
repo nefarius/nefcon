@@ -180,6 +180,39 @@ exit:
     return success;
 }
 
+bool devcon::update(const std::wstring& hardwareId, const std::wstring& fullInfPath, bool* rebootRequired, bool force)
+{
+    el::Logger* logger = el::Loggers::getLogger("default");
+
+    Newdev newdev;
+    DWORD flags = 0;
+    BOOL reboot = FALSE;
+
+    if (force)
+        flags |= INSTALLFLAG_FORCE;
+
+    switch(newdev.CallFunction(
+        newdev.fpUpdateDriverForPlugAndPlayDevicesW,
+        nullptr,
+        hardwareId.c_str(),
+        fullInfPath.c_str(),
+        flags,
+        &reboot
+    ))
+    {
+    case FunctionCallResult::NotAvailable:
+        logger->error("Couldn't find DiInstallDriverW export");
+        SetLastError(ERROR_INVALID_FUNCTION);
+        return false;
+    case FunctionCallResult::Failure:
+        return false;
+    case FunctionCallResult::Success:
+        return true;
+    }
+
+    return false;
+}
+
 bool devcon::restart_bth_usb_device()
 {
     DWORD i, err;
