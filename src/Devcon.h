@@ -2,6 +2,8 @@
 
 #include <guiddef.h>
 #include <string>
+#include <expected>
+#include <strsafe.h>
 
 namespace devcon
 {
@@ -28,7 +30,7 @@ namespace devcon
 	 */
 	bool create(const std::wstring& className, const GUID* classGuid, const std::wstring& hardwareId);
 
-    bool update(const std::wstring& hardwareId, const std::wstring& fullInfPath, bool* rebootRequired, bool force = false);
+    std::expected<bool, DWORD> update(const std::wstring& hardwareId, const std::wstring& fullInfPath, bool* rebootRequired, bool force = false);
 
 	bool restart_bth_usb_device();
 
