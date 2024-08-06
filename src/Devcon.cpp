@@ -180,7 +180,7 @@ exit:
     return success;
 }
 
-std::expected<bool, Win32Error> devcon::update(const std::wstring& hardwareId, const std::wstring& fullInfPath,
+std::expected<void, Win32Error> devcon::update(const std::wstring& hardwareId, const std::wstring& fullInfPath,
                                                bool* rebootRequired, bool force)
 {
     Newdev newdev;
@@ -206,7 +206,7 @@ std::expected<bool, Win32Error> devcon::update(const std::wstring& hardwareId, c
     case FunctionCallResult::Success:
         if (rebootRequired)
             *rebootRequired = reboot > 0;
-        return true;
+        return {};
     }
 
     return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
