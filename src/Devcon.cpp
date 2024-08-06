@@ -208,12 +208,12 @@ bool devcon::restart_bth_usb_device()
 
         // get all devices info
         while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-            &spDevInfoData,
-            SPDRP_ENUMERATOR_NAME,
-            &DataT,
-            (PBYTE)buffer,
-            buffersize,
-            &buffersize))
+                                                 &spDevInfoData,
+                                                 SPDRP_ENUMERATOR_NAME,
+                                                 &DataT,
+                                                 (PBYTE)buffer,
+                                                 buffersize,
+                                                 &buffersize))
         {
             if (GetLastError() == ERROR_INVALID_DATA)
             {
@@ -298,12 +298,12 @@ bool devcon::enable_disable_bth_usb_device(bool state)
 
         // get all devices info
         while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-            &spDevInfoData,
-            SPDRP_ENUMERATOR_NAME,
-            &DataT,
-            (PBYTE)buffer,
-            buffersize,
-            &buffersize))
+                                                 &spDevInfoData,
+                                                 SPDRP_ENUMERATOR_NAME,
+                                                 &DataT,
+                                                 (PBYTE)buffer,
+                                                 buffersize,
+                                                 &buffersize))
         {
             if (GetLastError() == ERROR_INVALID_DATA)
             {
@@ -381,7 +381,7 @@ bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequire
     nefarius::util::Newdev newdev;
     BOOL reboot;
 
-    if (!newdev.CallDiInstallDriverW)
+    if (!newdev.fpDiInstallDriverW)
     {
         logger->error("Couldn't find DiInstallDriverW export");
         SetLastError(ERROR_INVALID_FUNCTION);
@@ -390,7 +390,7 @@ bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequire
 
     logger->verbose(1, "Invoking DiInstallDriverW");
 
-    const auto ret = newdev.CallDiInstallDriverW(
+    const auto ret = newdev.fpDiInstallDriverW(
         nullptr,
         fullInfPath.c_str(),
         DIIRFLAG_FORCE_INF,
@@ -409,35 +409,36 @@ bool devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequi
 {
     el::Logger* logger = el::Loggers::getLogger("default");
 
-    nefarius::util::Newdev newdev;
+    Newdev newdev;
     BOOL reboot;
 
-    if (!newdev.CallDiUninstallDriverW)
-    {
-        logger->error("Couldn't find DiUninstallDriverW export");
-        SetLastError(ERROR_INVALID_FUNCTION);
-        return false;
-    }
-
-    logger->verbose(1, "Invoking DiUninstallDriverW");
-
-    const auto ret = newdev.CallDiUninstallDriverW(
+    switch (newdev.CallFunction(
+        newdev.fpDiUninstallDriverW,
         nullptr,
         fullInfPath.c_str(),
         0,
         &reboot
-    );
+    ))
+    {
+    case FunctionCallResult::NotAvailable:
+        logger->error("Couldn't find DiUninstallDriverW export");
+        SetLastError(ERROR_INVALID_FUNCTION);
+        return false;
+    case FunctionCallResult::Failure:
+        return false;
+    case FunctionCallResult::Success:
+        if (rebootRequired)
+        {
+            *rebootRequired = reboot > 0;
+        }
+        return true;
+    }
 
-    logger->verbose(1, "DiUninstallDriverW returned %v, reboot required: %v", ret, reboot);
-
-    if (rebootRequired)
-        *rebootRequired = reboot > 0;
-
-    return ret > 0;
+    return false;
 }
 
 bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
-    DeviceClassFilterPosition::Value position)
+                                     DeviceClassFilterPosition::Value position)
 {
     el::Logger* logger = el::Loggers::getLogger("default");
     auto key = SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS);
@@ -563,7 +564,7 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
 }
 
 bool devcon::remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
-    DeviceClassFilterPosition::Value position)
+                                        DeviceClassFilterPosition::Value position)
 {
     el::Logger* logger = el::Loggers::getLogger("default");
     auto key = SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS);
@@ -673,7 +674,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
 
     nefarius::util::Newdev newdev;
 
-    if (!newdev.CallDiUninstallDevice || !newdev.CallDiUninstallDriverW)
+    if (!newdev.fpDiUninstallDevice || !newdev.fpDiUninstallDriverW)
     {
         logger->error("Couldn't get DiUninstallDevice or DiUninstallDriverW function exports");
         SetLastError(ERROR_INVALID_FUNCTION);
@@ -775,7 +776,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
         //
         // Remove device
         // 
-        if (!newdev.CallDiUninstallDevice(
+        if (!newdev.fpDiUninstallDevice(
             nullptr,
             hDevInfo,
             spDevInfoData,
@@ -791,7 +792,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
         //
         // Uninstall from driver store
         // 
-        if (!newdev.CallDiUninstallDriverW(
+        if (!newdev.fpDiUninstallDriverW(
             nullptr,
             pDrvInfoDetailData->InfFileName,
             0,
@@ -807,7 +808,8 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
         ret = true;
 
         logger->verbose(1, "Reboot required: %v", *rebootRequired);
-    } while (FALSE);
+    }
+    while (FALSE);
 
     if (pDrvInfoDetailData)
         free(pDrvInfoDetailData);
@@ -840,7 +842,8 @@ static PWSTR wstristr(PCWSTR haystack, PCWSTR needle)
         {
             return (PWSTR)haystack;
         }
-    } while (*haystack++);
+    }
+    while (*haystack++);
     return nullptr;
 }
 
@@ -877,12 +880,12 @@ bool devcon::uninstall_device_and_driver(const GUID* classGuid, const std::wstri
 
         // get all devices info
         while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-            &spDevInfoData,
-            SPDRP_HARDWAREID,
-            &DataT,
-            reinterpret_cast<PBYTE>(buffer),
-            buffersize,
-            &buffersize))
+                                                 &spDevInfoData,
+                                                 SPDRP_HARDWAREID,
+                                                 &DataT,
+                                                 reinterpret_cast<PBYTE>(buffer),
+                                                 buffersize,
+                                                 &buffersize))
         {
             if (GetLastError() == ERROR_INVALID_DATA)
             {
@@ -969,14 +972,14 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
         }
 
         if (SetupDiGetActualSectionToInstallW(
-            hInf,
-            L"DefaultInstall",
-            InfSectionWithExt,
-            0xFFu,
-            reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
-            nullptr)
+                hInf,
+                L"DefaultInstall",
+                InfSectionWithExt,
+                0xFFu,
+                reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
+                nullptr)
             && SetupFindFirstLineW(hInf, InfSectionWithExt, nullptr,
-                reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
+                                   reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
         {
             logger->verbose(1, "DefaultInstall section found");
             defaultSection = TRUE;
@@ -1023,7 +1026,7 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
         }
 
         if (!SetupFindFirstLineW(hInf, L"Manufacturer", nullptr,
-            reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
+                                 reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
         {
             logger->verbose(1, "No Manufacturer section found");
 
@@ -1038,7 +1041,7 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
         nefarius::util::Newdev newdev;
         BOOL reboot = FALSE;
 
-        if (!newdev.CallDiInstallDriverW)
+        if (!newdev.fpDiInstallDriverW)
         {
             logger->error("Couldn't find DiInstallDriverW export");
             SetLastError(ERROR_INVALID_FUNCTION);
@@ -1047,7 +1050,7 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
 
         logger->verbose(1, "Invoking DiInstallDriverW");
 
-        const auto ret = newdev.CallDiInstallDriverW(
+        const auto ret = newdev.fpDiInstallDriverW(
             nullptr,
             fullInfPath.c_str(),
             0,
@@ -1061,7 +1064,8 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
             *rebootRequired = reboot > 0 || g_RestartDialogExCalled;
             logger->verbose(1, "Set rebootRequired to: %v", *rebootRequired);
         }
-    } while (FALSE);
+    }
+    while (FALSE);
 
     if (hInf != INVALID_HANDLE_VALUE)
     {
@@ -1097,14 +1101,14 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
         }
 
         if (SetupDiGetActualSectionToInstallW(
-            hInf,
-            L"DefaultUninstall",
-            InfSectionWithExt,
-            0xFFu,
-            reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
-            nullptr)
+                hInf,
+                L"DefaultUninstall",
+                InfSectionWithExt,
+                0xFFu,
+                reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
+                nullptr)
             && SetupFindFirstLineW(hInf, InfSectionWithExt, nullptr,
-                reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
+                                   reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
         {
             if (StringCchPrintfW(pszDest, 280ui64, L"DefaultUninstall 132 %ws", fullInfPath.c_str()) < 0)
             {
@@ -1142,7 +1146,8 @@ bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* reboot
             logger->error("No DefaultUninstall section found");
             errCode = ERROR_SECTION_NOT_FOUND;
         }
-    } while (FALSE);
+    }
+    while (FALSE);
 
     if (hInf != INVALID_HANDLE_VALUE)
     {
@@ -1183,12 +1188,12 @@ bool devcon::find_by_hwid(const std::wstring& matchstring)
     {
         // get all devices info
         while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-            &spDevInfoData,
-            SPDRP_HARDWAREID,
-            &DataT,
-            (PBYTE)buffer,
-            buffersize,
-            &buffersize))
+                                                 &spDevInfoData,
+                                                 SPDRP_HARDWAREID,
+                                                 &DataT,
+                                                 (PBYTE)buffer,
+                                                 buffersize,
+                                                 &buffersize))
         {
             if (GetLastError() == ERROR_INVALID_DATA)
             {
@@ -1221,7 +1226,8 @@ bool devcon::find_by_hwid(const std::wstring& matchstring)
 
         for (auto& i : entries)
         {
-            if (i.find(matchstring) != std::wstring::npos) {
+            if (i.find(matchstring) != std::wstring::npos)
+            {
                 foundMatch = TRUE;
                 break;
             }
@@ -1232,22 +1238,22 @@ bool devcon::find_by_hwid(const std::wstring& matchstring)
         {
             found = TRUE;
             total++;
-            
+
             std::wstring idValue = std::accumulate(std::begin(entries), std::end(entries), std::wstring(),
-                [](const std::wstring& ss, const std::wstring& s)
-                {
-                    return ss.empty() ? s : ss + L", " + s;
-                });
+                                                   [](const std::wstring& ss, const std::wstring& s)
+                                                   {
+                                                       return ss.empty() ? s : ss + L", " + s;
+                                                   });
 
             logger->info("Hardware IDs: %v", idValue);
-            
+
             while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-                &spDevInfoData,
-                SPDRP_DEVICEDESC,
-                &DataT,
-                (PBYTE)buffer,
-                buffersize,
-                &buffersize))
+                                                     &spDevInfoData,
+                                                     SPDRP_DEVICEDESC,
+                                                     &DataT,
+                                                     (PBYTE)buffer,
+                                                     buffersize,
+                                                     &buffersize))
             {
                 if (GetLastError() == ERROR_INVALID_DATA)
                 {
@@ -1268,12 +1274,12 @@ bool devcon::find_by_hwid(const std::wstring& matchstring)
             {
                 // Lets try SPDRP_DEVICEDESC
                 while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-                    &spDevInfoData,
-                    SPDRP_FRIENDLYNAME,
-                    &DataT,
-                    (PBYTE)buffer,
-                    buffersize,
-                    &buffersize))
+                                                         &spDevInfoData,
+                                                         SPDRP_FRIENDLYNAME,
+                                                         &DataT,
+                                                         (PBYTE)buffer,
+                                                         buffersize,
+                                                         &buffersize))
                 {
                     if (GetLastError() == ERROR_INVALID_DATA)
                     {
@@ -1316,9 +1322,9 @@ bool devcon::find_by_hwid(const std::wstring& matchstring)
             }
 
             logger->info("Version: %v.%v.%v.%v", std::to_wstring((drvInfo.DriverVersion >> 48) & 0xFFFF),
-                std::to_wstring((drvInfo.DriverVersion >> 32) & 0xFFFF),
-                std::to_wstring((drvInfo.DriverVersion >> 16) & 0xFFFF),
-                std::to_wstring(drvInfo.DriverVersion & 0x0000FFFF));
+                         std::to_wstring((drvInfo.DriverVersion >> 32) & 0xFFFF),
+                         std::to_wstring((drvInfo.DriverVersion >> 16) & 0xFFFF),
+                         std::to_wstring(drvInfo.DriverVersion & 0x0000FFFF));
         }
     }
 

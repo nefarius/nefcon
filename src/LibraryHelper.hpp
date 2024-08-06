@@ -6,6 +6,14 @@
 
 namespace nefarius::util
 {
+    // Enum to represent the result of the function call
+    enum class FunctionCallResult
+    {
+        NotAvailable,
+        Failure,
+        Success
+    };
+
     class ProcPtr
     {
     public:
@@ -49,10 +57,23 @@ namespace nefarius::util
         DllHelper _dll{L"Newdev.dll"};
 
     public:
-        decltype(DiUninstallDriverW)* CallDiUninstallDriverW = _dll["DiUninstallDriverW"];
-        decltype(DiInstallDriverW)* CallDiInstallDriverW = _dll["DiInstallDriverW"];
-        decltype(DiUninstallDevice)* CallDiUninstallDevice = _dll["DiUninstallDevice"];
-        decltype(UpdateDriverForPlugAndPlayDevicesW)* CallUpdateDriverForPlugAndPlayDevicesW = _dll[
+        decltype(DiUninstallDriverW)* fpDiUninstallDriverW = _dll["DiUninstallDriverW"];
+        decltype(DiInstallDriverW)* fpDiInstallDriverW = _dll["DiInstallDriverW"];
+        decltype(DiUninstallDevice)* fpDiUninstallDevice = _dll["DiUninstallDevice"];
+        decltype(UpdateDriverForPlugAndPlayDevicesW)* fpUpdateDriverForPlugAndPlayDevicesW = _dll[
             "UpdateDriverForPlugAndPlayDevicesW"];
+
+        // Wrapper function to handle the function call and return the result
+        template <typename Func, typename... Args>
+        FunctionCallResult CallFunction(Func func, Args... args)
+        {
+            if (!func)
+            {
+                return FunctionCallResult::NotAvailable;
+            }
+
+            const auto ret = func(args...);
+            return ret ? FunctionCallResult::Success : FunctionCallResult::Failure;
+        }
     };
 }
