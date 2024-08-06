@@ -14,6 +14,18 @@ namespace devcon
 		};
 	};
 
+	/**
+	 * Creates a new root-enumerated device node for a driver to load on to.
+	 *
+	 * @author	Benjamin "Nefarius" Hoeglinger-Stelzer
+	 * @date	06.08.2024
+	 *
+	 * @param 	className 	Name of the device class (System, HIDClass, USB, etc.).
+	 * @param 	classGuid 	Unique identifier for the device class.
+	 * @param 	hardwareId	The Hardware ID to set.
+	 *
+	 * @returns	True if it succeeds, false if it fails.
+	 */
 	bool create(const std::wstring& className, const GUID* classGuid, const std::wstring& hardwareId);
 
 	bool restart_bth_usb_device();
