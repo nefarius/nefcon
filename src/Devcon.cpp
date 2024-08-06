@@ -1039,31 +1039,32 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
             }
         }
 
-        nefarius::util::Newdev newdev;
+        Newdev newdev;
         BOOL reboot = FALSE;
 
-        if (!newdev.fpDiInstallDriverW)
-        {
-            logger->error("Couldn't find DiInstallDriverW export");
-            SetLastError(ERROR_INVALID_FUNCTION);
-            return false;
-        }
-
-        logger->verbose(1, "Invoking DiInstallDriverW");
-
-        const auto ret = newdev.fpDiInstallDriverW(
+        switch (newdev.CallFunction(
+            newdev.fpDiInstallDriverW,
             nullptr,
             fullInfPath.c_str(),
             0,
             &reboot
-        );
-
-        logger->verbose(1, "DiInstallDriverW returned with %v, reboot required: %v", ret, reboot);
-
-        if (rebootRequired)
+        ))
         {
-            *rebootRequired = reboot > 0 || g_RestartDialogExCalled;
-            logger->verbose(1, "Set rebootRequired to: %v", *rebootRequired);
+        case FunctionCallResult::NotAvailable:
+            logger->error("Couldn't find DiInstallDriverW export");
+            SetLastError(ERROR_INVALID_FUNCTION);
+            break;
+        case FunctionCallResult::Failure:
+            errCode = GetLastError();
+            break;
+        case FunctionCallResult::Success:
+            if (rebootRequired)
+            {
+                *rebootRequired = reboot > 0 || g_RestartDialogExCalled;
+                logger->verbose(1, "Set rebootRequired to: %v", *rebootRequired);
+            }
+            errCode = ERROR_SUCCESS;
+            break;
         }
     }
     while (FALSE);
