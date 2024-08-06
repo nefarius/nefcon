@@ -378,31 +378,32 @@ bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequire
 {
     el::Logger* logger = el::Loggers::getLogger("default");
 
-    nefarius::util::Newdev newdev;
+    Newdev newdev;
     BOOL reboot;
 
-    if (!newdev.fpDiInstallDriverW)
-    {
-        logger->error("Couldn't find DiInstallDriverW export");
-        SetLastError(ERROR_INVALID_FUNCTION);
-        return false;
-    }
-
-    logger->verbose(1, "Invoking DiInstallDriverW");
-
-    const auto ret = newdev.fpDiInstallDriverW(
+    switch (newdev.CallFunction(
+        newdev.fpDiInstallDriverW,
         nullptr,
         fullInfPath.c_str(),
         DIIRFLAG_FORCE_INF,
         &reboot
-    );
+    ))
+    {
+    case FunctionCallResult::NotAvailable:
+        logger->error("Couldn't find DiInstallDriverW export");
+        SetLastError(ERROR_INVALID_FUNCTION);
+        return false;
+    case FunctionCallResult::Failure:
+        return false;
+    case FunctionCallResult::Success:
+        if (rebootRequired)
+        {
+            *rebootRequired = reboot > 0;
+        }
+        return true;
+    }
 
-    logger->verbose(1, "DiInstallDriverW returned %v, reboot required: %v", ret, reboot);
-
-    if (rebootRequired)
-        *rebootRequired = reboot > 0;
-
-    return ret > 0;
+    return false;
 }
 
 bool devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequired)
