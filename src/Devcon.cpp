@@ -376,7 +376,7 @@ bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequire
 {
     el::Logger* logger = el::Loggers::getLogger("default");
 
-    Newdev newdev;
+    nefarius::util::Newdev newdev;
     BOOL reboot;
 
     if (!newdev.CallDiInstallDriverW)
@@ -407,7 +407,7 @@ bool devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequi
 {
     el::Logger* logger = el::Loggers::getLogger("default");
 
-    Newdev newdev;
+    nefarius::util::Newdev newdev;
     BOOL reboot;
 
     if (!newdev.CallDiUninstallDriverW)
@@ -669,7 +669,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
     DWORD err = ERROR_SUCCESS;
     bool ret = false;
 
-    Newdev newdev;
+    nefarius::util::Newdev newdev;
 
     if (!newdev.CallDiUninstallDevice || !newdev.CallDiUninstallDriverW)
     {
@@ -1033,7 +1033,7 @@ bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRe
             }
         }
 
-        Newdev newdev;
+        nefarius::util::Newdev newdev;
         BOOL reboot = FALSE;
 
         if (!newdev.CallDiInstallDriverW)
