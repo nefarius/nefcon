@@ -673,7 +673,7 @@ inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDe
     DWORD err = ERROR_SUCCESS;
     bool ret = false;
 
-    nefarius::util::Newdev newdev;
+    Newdev newdev;
 
     if (!newdev.fpDiUninstallDevice || !newdev.fpDiUninstallDriverW)
     {
