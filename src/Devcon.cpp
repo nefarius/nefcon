@@ -102,18 +102,23 @@ inline std::vector<wchar_t> BuildMultiString(const std::vector<std::wstring>& da
 bool devcon::create(const std::wstring& className, const GUID* classGuid, const std::wstring& hardwareId)
 {
     el::Logger* logger = el::Loggers::getLogger("default");
+    bool success = false;
+    DWORD win32Error = ERROR_SUCCESS;
     const auto deviceInfoSet = SetupDiCreateDeviceInfoList(classGuid, nullptr);
 
     if (INVALID_HANDLE_VALUE == deviceInfoSet)
     {
         logger->error("SetupDiCreateDeviceInfoList failed with error code %v", GetLastError());
-        return false;
+        goto exit;
     }
 
     SP_DEVINFO_DATA deviceInfoData;
     deviceInfoData.cbSize = sizeof(deviceInfoData);
 
-    const auto cdiRet = SetupDiCreateDeviceInfoW(
+    //
+    // Create new device node
+    // 
+    if (!SetupDiCreateDeviceInfoW(
         deviceInfoSet,
         className.c_str(),
         classGuid,
@@ -121,46 +126,55 @@ bool devcon::create(const std::wstring& className, const GUID* classGuid, const 
         nullptr,
         DICD_GENERATE_ID,
         &deviceInfoData
-    );
-
-    if (!cdiRet)
+    ))
     {
-        logger->error("SetupDiCreateDeviceInfoW failed with error code %v", GetLastError());
-        SetupDiDestroyDeviceInfoList(deviceInfoSet);
-        return false;
+        win32Error = GetLastError();
+        logger->error("SetupDiCreateDeviceInfoW failed with error code %v", win32Error);
+        goto exit;
     }
 
-    const auto sdrpRet = SetupDiSetDeviceRegistryPropertyW(
+    //
+    // Add the HardwareID to the Device's HardwareID property.
+    //
+    if (!SetupDiSetDeviceRegistryPropertyW(
         deviceInfoSet,
         &deviceInfoData,
         SPDRP_HARDWAREID,
         (const PBYTE)hardwareId.c_str(),
         static_cast<DWORD>(hardwareId.size() * sizeof(WCHAR))
-    );
-
-    if (!sdrpRet)
+    ))
     {
-        logger->error("SetupDiSetDeviceRegistryPropertyW failed with error code %v", GetLastError());
-        SetupDiDestroyDeviceInfoList(deviceInfoSet);
-        return false;
+        win32Error = GetLastError();
+        logger->error("SetupDiSetDeviceRegistryPropertyW failed with error code %v", win32Error);
+        goto exit;
     }
 
-    const auto cciRet = SetupDiCallClassInstaller(
+    //
+    // Transform the registry element into an actual device node in the PnP HW tree
+    //
+    if (!SetupDiCallClassInstaller(
         DIF_REGISTERDEVICE,
         deviceInfoSet,
         &deviceInfoData
-    );
-
-    if (!cciRet)
+    ))
     {
-        logger->error("SetupDiCallClassInstaller failed with error code %v", GetLastError());
-        SetupDiDestroyDeviceInfoList(deviceInfoSet);
-        return false;
+        win32Error = GetLastError();
+        logger->error("SetupDiCallClassInstaller failed with error code %v", win32Error);
+        goto exit;
     }
 
-    SetupDiDestroyDeviceInfoList(deviceInfoSet);
+    success = true;
 
-    return true;
+exit:
+
+    if (deviceInfoSet != INVALID_HANDLE_VALUE)
+    {
+        SetupDiDestroyDeviceInfoList(deviceInfoSet);
+    }
+
+    SetLastError(win32Error);
+
+    return success;
 }
 
 bool devcon::restart_bth_usb_device()
