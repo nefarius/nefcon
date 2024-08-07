@@ -174,9 +174,9 @@ static std::expected<wil::unique_hlocal_ptr<PBYTE>, Win32Error> GetDeviceRegistr
 std::expected<void, Win32Error> devcon::create(const std::wstring& className, const GUID* classGuid,
                                                const WideMultiStringArray& hardwareId)
 {
-    HDEVINFOHandleGuard deviceInfoSet(SetupDiCreateDeviceInfoList(classGuid, nullptr));
+    HDEVINFOHandleGuard hDevInfo(SetupDiCreateDeviceInfoList(classGuid, nullptr));
 
-    if (deviceInfoSet.is_invalid())
+    if (hDevInfo.is_invalid())
     {
         return std::unexpected(Win32Error(GetLastError(), "SetupDiCreateDeviceInfoList"));
     }
@@ -188,7 +188,7 @@ std::expected<void, Win32Error> devcon::create(const std::wstring& className, co
     // Create new device node
     // 
     if (!SetupDiCreateDeviceInfoW(
-        deviceInfoSet.get(),
+        hDevInfo.get(),
         className.c_str(),
         classGuid,
         nullptr,
@@ -204,7 +204,7 @@ std::expected<void, Win32Error> devcon::create(const std::wstring& className, co
     // Add the HardwareID to the Device's HardwareID property.
     //
     if (!SetupDiSetDeviceRegistryPropertyW(
-        deviceInfoSet.get(),
+        hDevInfo.get(),
         &deviceInfoData,
         SPDRP_HARDWAREID,
         hardwareId.data(),
@@ -219,7 +219,7 @@ std::expected<void, Win32Error> devcon::create(const std::wstring& className, co
     //
     if (!SetupDiCallClassInstaller(
         DIF_REGISTERDEVICE,
-        deviceInfoSet.get(),
+        hDevInfo.get(),
         &deviceInfoData
     ))
     {
@@ -875,22 +875,14 @@ std::vector<std::expected<void, Win32Error>> devcon::uninstall_device_and_driver
 
     SP_DEVINFO_DATA spDevInfoData;
 
-    HDEVINFO hDevInfo = SetupDiGetClassDevs(
+    HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
         classGuid,
         nullptr,
         nullptr,
         DIGCF_PRESENT
-    );
+    ));
 
-    const auto guard = sg::make_scope_guard([hDevInfo]() noexcept
-    {
-        if (hDevInfo != INVALID_HANDLE_VALUE)
-        {
-            SetupDiDestroyDeviceInfoList(hDevInfo);
-        }
-    });
-
-    if (hDevInfo == INVALID_HANDLE_VALUE)
+    if (hDevInfo.is_invalid())
     {
         results.push_back(std::unexpected(Win32Error("SetupDiGetClassDevs")));
         return results;
@@ -898,11 +890,11 @@ std::vector<std::expected<void, Win32Error>> devcon::uninstall_device_and_driver
 
     spDevInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
 
-    for (DWORD i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &spDevInfoData); i++)
+    for (DWORD i = 0; SetupDiEnumDeviceInfo(hDevInfo.get(), i, &spDevInfoData); i++)
     {
         DWORD bufferSize = 0;
         const auto hwIdBuffer = GetDeviceRegistryProperty(
-            hDevInfo,
+            hDevInfo.get(),
             &spDevInfoData,
             SPDRP_HARDWAREID,
             NULL,
@@ -924,7 +916,11 @@ std::vector<std::expected<void, Win32Error>> devcon::uninstall_device_and_driver
         {
             if (wstristr(p, hardwareId.c_str()))
             {
-                results.push_back(::uninstall_device_and_driver(hDevInfo, &spDevInfoData, rebootRequired));
+                results.push_back(::uninstall_device_and_driver(
+                    hDevInfo.get(),
+                    &spDevInfoData,
+                    rebootRequired
+                ));
                 break;
             }
         }
@@ -1138,61 +1134,47 @@ std::expected<void, Win32Error> devcon::inf_default_uninstall(const std::wstring
     return std::unexpected(Win32Error(ERROR_SECTION_NOT_FOUND));
 }
 
-bool devcon::find_by_hwid(const std::wstring& matchstring)
+std::expected<bool, Win32Error> devcon::find_by_hwid(const std::wstring& matchstring)
 {
     el::Logger* logger = el::Loggers::getLogger("default");
     bool found = FALSE;
     DWORD err, total = 0;
     SP_DEVINFO_DATA spDevInfoData;
 
-    DWORD DataT;
-    LPTSTR buffer = nullptr;
-    DWORD buffersize = 0;
-
-    const HDEVINFO hDevInfo = SetupDiGetClassDevs(
+    HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
         nullptr,
         nullptr,
         nullptr,
         DIGCF_ALLCLASSES | DIGCF_PRESENT
-    );
-    if (hDevInfo == INVALID_HANDLE_VALUE)
+    ));
+
+    if (hDevInfo.is_invalid())
     {
-        return found;
+        return std::unexpected(Win32Error("SetupDiGetClassDevs"));
     }
 
     spDevInfoData.cbSize = sizeof(spDevInfoData);
 
-    for (DWORD devIndex = 0; SetupDiEnumDeviceInfo(hDevInfo, devIndex, &spDevInfoData); devIndex++)
+    for (DWORD devIndex = 0; SetupDiEnumDeviceInfo(hDevInfo.get(), devIndex, &spDevInfoData); devIndex++)
     {
-        // get all devices info
-        while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-                                                 &spDevInfoData,
-                                                 SPDRP_HARDWAREID,
-                                                 &DataT,
-                                                 (PBYTE)buffer,
-                                                 buffersize,
-                                                 &buffersize))
+        DWORD bufferSize = 0;
+        const auto hwIdProperty = GetDeviceRegistryProperty(
+            hDevInfo.get(),
+            &spDevInfoData,
+            SPDRP_HARDWAREID,
+            NULL,
+            &bufferSize
+        );
+
+        if (!hwIdProperty)
         {
-            if (GetLastError() == ERROR_INVALID_DATA)
-            {
-                break;
-            }
-            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-            {
-                if (buffer)
-                    LocalFree(buffer);
-                buffer = static_cast<wchar_t*>(LocalAlloc(LPTR, buffersize));
-            }
-            else
-            {
-                goto cleanup_DeviceInfo;
-            }
-        }
-        if (GetLastError() == ERROR_INVALID_DATA)
             continue;
+        }
+
+        LPTSTR hwIdsBuffer = (LPTSTR)hwIdProperty.value().get();
 
         std::vector<std::wstring> entries;
-        const TCHAR* p = buffer;
+        const TCHAR* p = hwIdsBuffer;
 
         while (*p)
         {
@@ -1225,78 +1207,64 @@ bool devcon::find_by_hwid(const std::wstring& matchstring)
 
             logger->info("Hardware IDs: %v", idValue);
 
-            while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-                                                     &spDevInfoData,
-                                                     SPDRP_DEVICEDESC,
-                                                     &DataT,
-                                                     (PBYTE)buffer,
-                                                     buffersize,
-                                                     &buffersize))
+            const auto descProperty = GetDeviceRegistryProperty(
+                hDevInfo.get(),
+                &spDevInfoData,
+                SPDRP_DEVICEDESC,
+                NULL,
+                &bufferSize
+            );
+
+            LPTSTR nameBuffer = NULL;
+
+            //
+            // Try Device Description...
+            // 
+            if (!descProperty)
             {
-                if (GetLastError() == ERROR_INVALID_DATA)
+                //
+                // ...then Friendly Name
+                // 
+                const auto nameProperty = GetDeviceRegistryProperty(
+                    hDevInfo.get(),
+                    &spDevInfoData,
+                    SPDRP_FRIENDLYNAME,
+                    NULL,
+                    &bufferSize
+                );
+
+                if (!nameProperty)
                 {
-                    break;
+                    continue;
                 }
-                if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-                {
-                    if (buffer)
-                        LocalFree(buffer);
-                    buffer = static_cast<wchar_t*>(LocalAlloc(LPTR, buffersize));
-                }
-                else
-                {
-                    goto cleanup_DeviceInfo;
-                }
-            }
-            if (GetLastError() == ERROR_INVALID_DATA)
-            {
-                // Lets try SPDRP_DEVICEDESC
-                while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-                                                         &spDevInfoData,
-                                                         SPDRP_FRIENDLYNAME,
-                                                         &DataT,
-                                                         (PBYTE)buffer,
-                                                         buffersize,
-                                                         &buffersize))
-                {
-                    if (GetLastError() == ERROR_INVALID_DATA)
-                    {
-                        break;
-                    }
-                    if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-                    {
-                        if (buffer)
-                            LocalFree(buffer);
-                        buffer = static_cast<wchar_t*>(LocalAlloc(LPTR, buffersize));
-                    }
-                    else
-                    {
-                        goto cleanup_DeviceInfo;
-                    }
-                }
-                if (GetLastError() != ERROR_INVALID_DATA)
-                {
-                    logger->info("Name: %v", std::wstring(buffer));
-                }
+
+                nameBuffer = (LPTSTR)nameProperty.value().get();
             }
             else
             {
-                logger->info("Name: %v", std::wstring(buffer));
+                nameBuffer = (LPTSTR)descProperty.value().get();
             }
 
+            logger->info("Name: %v", std::wstring(nameBuffer));
+
             // Build a list of driver info items that we will retrieve below
-            if (!SetupDiBuildDriverInfoList(hDevInfo, &spDevInfoData, SPDIT_COMPATDRIVER))
+            if (!SetupDiBuildDriverInfoList(hDevInfo.get(), &spDevInfoData, SPDIT_COMPATDRIVER))
             {
-                goto cleanup_DeviceInfo;
+                continue;
             }
+
+            const auto driverGuard = sg::make_scope_guard([&hDevInfo, spDevInfoData]() noexcept
+            {
+                SetupDiDestroyDriverInfoList(hDevInfo.get(), (PSP_DEVINFO_DATA)&spDevInfoData, SPDIT_COMPATDRIVER);
+            });
 
             // Get the first info item for this driver
             SP_DRVINFO_DATA drvInfo;
             drvInfo.cbSize = sizeof(SP_DRVINFO_DATA);
 
-            if (!SetupDiEnumDriverInfo(hDevInfo, &spDevInfoData, SPDIT_COMPATDRIVER, 0, &drvInfo))
+            if (!SetupDiEnumDriverInfo(hDevInfo.get(), &spDevInfoData, SPDIT_COMPATDRIVER, 0, &drvInfo))
             {
-                goto cleanup_DeviceInfo; // Still fails with "no more items"
+                continue;
             }
 
             logger->info("Version: %v.%v.%v.%v", std::to_wstring((drvInfo.DriverVersion >> 48) & 0xFFFF),
@@ -1306,11 +1274,6 @@ bool devcon::find_by_hwid(const std::wstring& matchstring)
         }
     }
 
-cleanup_DeviceInfo:
-    err = GetLastError();
-    SetupDiDestroyDeviceInfoList(hDevInfo);
-    SetLastError(err);
-    logger->verbose(1, "Total Found:: %v", std::to_wstring(total));
     return found;
 }
 
