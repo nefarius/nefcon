@@ -519,7 +519,7 @@ std::expected<void, Win32Error> devcon::add_device_class_filter(const GUID* clas
             filterValue,
             nullptr,
             &type,
-            reinterpret_cast<LPBYTE>(&temp[0]),
+            reinterpret_cast<LPBYTE>(temp.data()),
             &size
         );
 
@@ -529,7 +529,7 @@ std::expected<void, Win32Error> devcon::add_device_class_filter(const GUID* clas
         }
 
         size_t index = 0;
-        size_t len = wcslen(&temp[0]);
+        size_t len = wcslen(temp.data());
         while (len > 0)
         {
             filters.emplace_back(&temp[index]);
@@ -554,7 +554,7 @@ std::expected<void, Win32Error> devcon::add_device_class_filter(const GUID* clas
             filterValue,
             0, // reserved
             REG_MULTI_SZ,
-            reinterpret_cast<const BYTE*>(&multiString[0]),
+            reinterpret_cast<const BYTE*>(multiString.data()),
             dataSize
         );
 
@@ -581,7 +581,7 @@ std::expected<void, Win32Error> devcon::add_device_class_filter(const GUID* clas
             filterValue,
             0, // reserved
             REG_MULTI_SZ,
-            reinterpret_cast<const BYTE*>(&multiString[0]),
+            reinterpret_cast<const BYTE*>(multiString.data()),
             dataSize
         );
 
@@ -608,7 +608,6 @@ std::expected<void, nefarius::util::Win32Error> devcon::remove_device_class_filt
 
     LPCWSTR filterValue = (position == DeviceClassFilterPosition::Lower) ? L"LowerFilters" : L"UpperFilters";
     DWORD type, size;
-    std::vector<std::wstring> filters;
 
     auto status = RegQueryValueExW(
         key.get(),
@@ -624,6 +623,7 @@ std::expected<void, nefarius::util::Win32Error> devcon::remove_device_class_filt
     // 
     if (status == ERROR_SUCCESS)
     {
+        std::vector<std::wstring> filters;
         std::vector<wchar_t> temp(size / sizeof(wchar_t));
 
         status = RegQueryValueExW(
@@ -631,7 +631,7 @@ std::expected<void, nefarius::util::Win32Error> devcon::remove_device_class_filt
             filterValue,
             nullptr,
             &type,
-            reinterpret_cast<LPBYTE>(&temp[0]),
+            reinterpret_cast<LPBYTE>(temp.data()),
             &size
         );
 
@@ -644,7 +644,7 @@ std::expected<void, nefarius::util::Win32Error> devcon::remove_device_class_filt
         // Remove value, if found
         //
         size_t index = 0;
-        size_t len = wcslen(&temp[0]);
+        size_t len = wcslen(temp.data());
         while (len > 0)
         {
             if (filterName != &temp[index])
@@ -664,7 +664,7 @@ std::expected<void, nefarius::util::Win32Error> devcon::remove_device_class_filt
             filterValue,
             0, // reserved
             REG_MULTI_SZ,
-            reinterpret_cast<const BYTE*>(&multiString[0]),
+            reinterpret_cast<const BYTE*>(multiString.data()),
             dataSize
         );
 
