@@ -16,14 +16,16 @@ INITIALIZE_EASYLOGGINGPP
 	name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
 processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
+namespace
+{
+    bool IsAdmin(int& errorCode);
 
-static bool IsAdmin(int& errorCode);
+    using GUIDFromString_t = BOOL(WINAPI*)(_In_ LPCSTR, _Out_ LPGUID);
 
-using GUIDFromString_t = BOOL(WINAPI*)(_In_ LPCSTR, _Out_ LPGUID);
+    bool GUIDFromString(const std::string& input, GUID* guid);
 
-static bool GUIDFromString(const std::string& input, GUID* guid);
-
-static void CustomizeEasyLoggingColeredConsole();
+    void CustomizeEasyLoggingColoredConsole();
+}
 
 
 #if defined(NEFCON_WINMAIN)
@@ -80,7 +82,7 @@ int main(int argc, char* argv[])
     cmdl.parse(nArgs, &argv[0]);
 #else
     START_EASYLOGGINGPP(argc, argv);
-    CustomizeEasyLoggingColeredConsole();
+    CustomizeEasyLoggingColoredConsole();
     cmdl.parse(argv);
 #endif
 
@@ -851,73 +853,76 @@ int main(int argc, char* argv[])
     return EXIT_SUCCESS;
 }
 
-static bool IsAdmin(int& errorCode)
+namespace
 {
-    el::Logger* logger = el::Loggers::getLogger("default");
-    BOOL isAdmin = FALSE;
-
-    if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+    bool IsAdmin(int& errorCode)
     {
-        logger->error("Failed to determine elevation status, error: ",
-                      winapi::GetLastErrorStdStr());
-        std::cout << color(red) <<
-            "Failed to determine elevation status, error: "
-            << winapi::GetLastErrorStdStr() << std::endl;
-        errorCode = EXIT_FAILURE;
-        return false;
-    }
+        el::Logger* logger = el::Loggers::getLogger("default");
+        BOOL isAdmin = FALSE;
 
-    if (!isAdmin)
-    {
-        logger->error(
-            "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled.");
-        std::cout << color(red) <<
-            "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled."
-            << std::endl;
-        errorCode = EXIT_FAILURE;
-        return false;
-    }
-
-    return true;
-}
-
-static bool GUIDFromString(const std::string& input, GUID* guid)
-{
-    // try without brackets...
-    if (UuidFromStringA(RPC_CSTR(input.data()), guid) == RPC_S_INVALID_STRING_UUID)
-    {
-        const HMODULE shell32 = LoadLibraryA("Shell32.dll");
-
-        if (shell32 == nullptr)
+        if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+        {
+            logger->error("Failed to determine elevation status, error: ",
+                          winapi::GetLastErrorStdStr());
+            std::cout << color(red) <<
+                "Failed to determine elevation status, error: "
+                << winapi::GetLastErrorStdStr() << std::endl;
+            errorCode = EXIT_FAILURE;
             return false;
+        }
 
-        const auto pFnGUIDFromString = reinterpret_cast<GUIDFromString_t>(
-            GetProcAddress(shell32, MAKEINTRESOURCEA(703)));
+        if (!isAdmin)
+        {
+            logger->error(
+                "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled.");
+            std::cout << color(red) <<
+                "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled."
+                << std::endl;
+            errorCode = EXIT_FAILURE;
+            return false;
+        }
 
-        // ...finally try with brackets
-        return pFnGUIDFromString(input.c_str(), guid);
+        return true;
     }
 
-    return true;
-}
+    bool GUIDFromString(const std::string& input, GUID* guid)
+    {
+        // try without brackets...
+        if (UuidFromStringA(RPC_CSTR(input.data()), guid) == RPC_S_INVALID_STRING_UUID)
+        {
+            const HMODULE shell32 = LoadLibraryA("Shell32.dll");
 
-static void CustomizeEasyLoggingColeredConsole()
-{
-    el::Configurations conf;
-    conf.setToDefault();
+            if (shell32 == nullptr)
+                return false;
 
-    // Disable STDOUT logging for all log levels
-    conf.set(el::Level::Global, el::ConfigurationType::ToStandardOutput, "false");
+            const auto pFnGUIDFromString = reinterpret_cast<GUIDFromString_t>(
+                GetProcAddress(shell32, MAKEINTRESOURCEA(703)));
 
-    el::Loggers::addFlag(el::LoggingFlag::ImmediateFlush);
+            // ...finally try with brackets
+            return pFnGUIDFromString(input.c_str(), guid);
+        }
 
-    // Register the custom log dispatch callback
-    el::Helpers::installLogDispatchCallback<ConsoleColorLogDispatchCallback>("ConsoleColorLogDispatchCallback");
+        return true;
+    }
 
-    // Enable the custom log dispatch callback
-    el::Helpers::logDispatchCallback<ConsoleColorLogDispatchCallback>("ConsoleColorLogDispatchCallback")->
-        setEnabled(true);
+    void CustomizeEasyLoggingColoredConsole()
+    {
+        el::Configurations conf;
+        conf.setToDefault();
 
-    // Apply the configuration
-    el::Loggers::reconfigureLogger("default", conf);
+        // Disable STDOUT logging for all log levels
+        conf.set(el::Level::Global, el::ConfigurationType::ToStandardOutput, "false");
+
+        el::Loggers::addFlag(el::LoggingFlag::ImmediateFlush);
+
+        // Register the custom log dispatch callback
+        el::Helpers::installLogDispatchCallback<ConsoleColorLogDispatchCallback>("ConsoleColorLogDispatchCallback");
+
+        // Enable the custom log dispatch callback
+        el::Helpers::logDispatchCallback<ConsoleColorLogDispatchCallback>("ConsoleColorLogDispatchCallback")->
+            setEnabled(true);
+
+        // Apply the configuration
+        el::Loggers::reconfigureLogger("default", conf);
+    }
 }
