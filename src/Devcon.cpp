@@ -259,94 +259,78 @@ std::expected<void, Win32Error> devcon::update(const std::wstring& hardwareId, c
     return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
 }
 
-bool devcon::restart_bth_usb_device()
+std::expected<void, Win32Error> devcon::restart_bth_usb_device(int instance)
 {
-    DWORD i, err;
-    bool found = false, succeeded = false;
-
-    HDEVINFO hDevInfo;
+    bool found = false;
     SP_DEVINFO_DATA spDevInfoData;
 
-    hDevInfo = SetupDiGetClassDevs(
+    HDEVINFO hDevInfo = SetupDiGetClassDevs(
         &GUID_DEVCLASS_BLUETOOTH,
         nullptr,
         nullptr,
         DIGCF_PRESENT
     );
+
+    const auto guard = sg::make_scope_guard([hDevInfo]() noexcept
+    {
+        if (hDevInfo != INVALID_HANDLE_VALUE)
+        {
+            SetupDiDestroyDeviceInfoList(hDevInfo);
+        }
+    });
+
     if (hDevInfo == INVALID_HANDLE_VALUE)
     {
-        return succeeded;
+        return std::unexpected(Win32Error(GetLastError(), "SetupDiGetClassDevs"));
     }
 
     spDevInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-    for (i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &spDevInfoData); i++)
+
+    if (!SetupDiEnumDeviceInfo(hDevInfo, instance, &spDevInfoData))
     {
-        DWORD DataT;
-        LPTSTR p, buffer = nullptr;
-        DWORD buffersize = 0;
+        std::unexpected(Win32Error(GetLastError(), "SetupDiEnumDeviceInfo"));
+    }
 
-        // get all devices info
-        while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-                                                 &spDevInfoData,
-                                                 SPDRP_ENUMERATOR_NAME,
-                                                 &DataT,
-                                                 (PBYTE)buffer,
-                                                 buffersize,
-                                                 &buffersize))
+    DWORD bufferSize = 0;
+    const auto enumeratorProperty = GetDeviceRegistryProperty(
+        hDevInfo,
+        &spDevInfoData,
+        SPDRP_ENUMERATOR_NAME,
+        NULL,
+        &bufferSize
+    );
+
+    if (!enumeratorProperty)
+    {
+        return std::unexpected(enumeratorProperty.error());
+    }
+
+    const LPTSTR buffer = (LPTSTR)enumeratorProperty.value();
+
+    // find device with enumerator name "USB"
+    for (LPTSTR p = buffer; p && *p && (p < &buffer[bufferSize]); p += lstrlen(p) + sizeof(TCHAR))
+    {
+        if (!_tcscmp(TEXT("USB"), p))
         {
-            if (GetLastError() == ERROR_INVALID_DATA)
-            {
-                break;
-            }
-            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-            {
-                if (buffer)
-                    LocalFree(buffer);
-                buffer = static_cast<wchar_t*>(LocalAlloc(LPTR, buffersize));
-            }
-            else
-            {
-                goto cleanup_DeviceInfo;
-            }
-        }
-
-        if (GetLastError() == ERROR_INVALID_DATA)
-            continue;
-
-        //find device with enumerator name "USB"
-        for (p = buffer; *p && (p < &buffer[buffersize]); p += lstrlen(p) + sizeof(TCHAR))
-        {
-            if (!_tcscmp(TEXT("USB"), p))
-            {
-                found = true;
-                break;
-            }
-        }
-
-        if (buffer)
-            LocalFree(buffer);
-
-        // if device found restart
-        if (found)
-        {
-            if (!SetupDiRestartDevices(hDevInfo, &spDevInfoData))
-            {
-                err = GetLastError();
-                break;
-            }
-
-            succeeded = true;
-
+            found = true;
             break;
         }
     }
 
-cleanup_DeviceInfo:
-    err = GetLastError();
-    SetupDiDestroyDeviceInfoList(hDevInfo);
-    SetLastError(err);
+    LocalFree(buffer);
 
-    return succeeded;
+    // if device found restart
+    if (found)
+    {
+        if (!SetupDiRestartDevices(hDevInfo, &spDevInfoData))
+        {
+            std::unexpected(Win32Error(GetLastError(), "SetupDiRestartDevices"));
+        }
+
+        return {};
+    }
+
+    return std::unexpected(Win32Error(ERROR_NOT_FOUND));
 }
 
 bool devcon::enable_disable_bth_usb_device(bool state)

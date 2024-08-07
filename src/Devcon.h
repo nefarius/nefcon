@@ -55,7 +55,7 @@ namespace devcon
                                                            const std::wstring& fullInfPath, bool* rebootRequired,
                                                            bool force = false);
 
-    bool restart_bth_usb_device();
+    std::expected<void, nefarius::util::Win32Error> restart_bth_usb_device(int instance = 0);
 
     bool enable_disable_bth_usb_device(bool state);
 
