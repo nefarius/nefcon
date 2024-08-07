@@ -778,6 +778,8 @@ int main(int argc, char* argv[])
 
 #pragma endregion
 
+#pragma region Version
+
     if (cmdl[{"-v", "--version"}])
     {
         std::cout << "nefcon version " <<
