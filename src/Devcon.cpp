@@ -484,16 +484,14 @@ std::expected<void, Win32Error> devcon::uninstall_driver(const std::wstring& ful
     return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
 }
 
-bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
-                                     DeviceClassFilterPosition position)
+std::expected<void, Win32Error> devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
+                                                                DeviceClassFilterPosition position)
 {
-    el::Logger* logger = el::Loggers::getLogger("default");
-    auto key = SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS);
+    HKEYHandleGuard key(SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS));
 
-    if (INVALID_HANDLE_VALUE == key)
+    if (key.is_invalid())
     {
-        logger->error("SetupDiOpenClassRegKey failed with error code %v", GetLastError());
-        return false;
+        return std::unexpected(Win32Error("SetupDiOpenClassRegKey"));
     }
 
     LPCWSTR filterValue = (position == DeviceClassFilterPosition::Lower) ? L"LowerFilters" : L"UpperFilters";
@@ -501,7 +499,7 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
     std::vector<std::wstring> filters;
 
     auto status = RegQueryValueExW(
-        key,
+        key.get(),
         filterValue,
         nullptr,
         &type,
@@ -517,7 +515,7 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
         std::vector<wchar_t> temp(size / sizeof(wchar_t));
 
         status = RegQueryValueExW(
-            key,
+            key.get(),
             filterValue,
             nullptr,
             &type,
@@ -527,10 +525,7 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
 
         if (status != ERROR_SUCCESS)
         {
-            logger->error("RegQueryValueExW failed with status %v", status);
-            RegCloseKey(key);
-            SetLastError(status);
-            return false;
+            return std::unexpected(Win32Error(status, "RegQueryValueExW"));
         }
 
         size_t index = 0;
@@ -545,7 +540,7 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
         //
         // Filter not there yet, add
         // 
-        if (std::find(filters.begin(), filters.end(), filterName) == filters.end())
+        if (std::ranges::find(filters, filterName) == filters.end())
         {
             filters.emplace_back(filterName);
         }
@@ -555,7 +550,7 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
         const DWORD dataSize = static_cast<DWORD>(multiString.size() * sizeof(wchar_t));
 
         status = RegSetValueExW(
-            key,
+            key.get(),
             filterValue,
             0, // reserved
             REG_MULTI_SZ,
@@ -565,14 +560,10 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
 
         if (status != ERROR_SUCCESS)
         {
-            logger->error("RegSetValueExW failed with status %v", status);
-            RegCloseKey(key);
-            SetLastError(status);
-            return false;
+            return std::unexpected(Win32Error(status, "RegSetValueExW"));
         }
 
-        RegCloseKey(key);
-        return true;
+        return {};
     }
     //
     // Value doesn't exist, create and populate
@@ -586,7 +577,7 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
         const DWORD dataSize = static_cast<DWORD>(multiString.size() * sizeof(wchar_t));
 
         status = RegSetValueExW(
-            key,
+            key.get(),
             filterValue,
             0, // reserved
             REG_MULTI_SZ,
@@ -596,30 +587,23 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
 
         if (status != ERROR_SUCCESS)
         {
-            logger->error("RegSetValueExW failed with status %v", status);
-            RegCloseKey(key);
-            SetLastError(status);
-            return false;
+            return std::unexpected(Win32Error(status, "RegSetValueExW"));
         }
 
-        RegCloseKey(key);
-        return true;
+        return {};
     }
 
-    RegCloseKey(key);
-    return false;
+    return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
 }
 
-bool devcon::remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
+std::expected<void, nefarius::util::Win32Error> devcon::remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
                                         DeviceClassFilterPosition position)
 {
-    el::Logger* logger = el::Loggers::getLogger("default");
-    auto key = SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS);
+    HKEYHandleGuard key(SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS));
 
-    if (INVALID_HANDLE_VALUE == key)
+    if (key.is_invalid())
     {
-        logger->error("SetupDiOpenClassRegKey failed with error code %v", GetLastError());
-        return false;
+        return std::unexpected(Win32Error("SetupDiOpenClassRegKey"));
     }
 
     LPCWSTR filterValue = (position == DeviceClassFilterPosition::Lower) ? L"LowerFilters" : L"UpperFilters";
@@ -627,7 +611,7 @@ bool devcon::remove_device_class_filter(const GUID* classGuid, const std::wstrin
     std::vector<std::wstring> filters;
 
     auto status = RegQueryValueExW(
-        key,
+        key.get(),
         filterValue,
         nullptr,
         &type,
@@ -643,7 +627,7 @@ bool devcon::remove_device_class_filter(const GUID* classGuid, const std::wstrin
         std::vector<wchar_t> temp(size / sizeof(wchar_t));
 
         status = RegQueryValueExW(
-            key,
+            key.get(),
             filterValue,
             nullptr,
             &type,
@@ -653,10 +637,7 @@ bool devcon::remove_device_class_filter(const GUID* classGuid, const std::wstrin
 
         if (status != ERROR_SUCCESS)
         {
-            logger->error("RegQueryValueExW failed with status %v", status);
-            RegCloseKey(key);
-            SetLastError(status);
-            return false;
+            return std::unexpected(Win32Error(status, "RegQueryValueExW"));
         }
 
         //
@@ -679,7 +660,7 @@ bool devcon::remove_device_class_filter(const GUID* classGuid, const std::wstrin
         const DWORD dataSize = static_cast<DWORD>(multiString.size() * sizeof(wchar_t));
 
         status = RegSetValueExW(
-            key,
+            key.get(),
             filterValue,
             0, // reserved
             REG_MULTI_SZ,
@@ -689,26 +670,20 @@ bool devcon::remove_device_class_filter(const GUID* classGuid, const std::wstrin
 
         if (status != ERROR_SUCCESS)
         {
-            logger->error("RegSetValueExW failed with status %v", status);
-            RegCloseKey(key);
-            SetLastError(status);
-            return false;
+            return std::unexpected(Win32Error(status, "RegSetValueExW"));
         }
 
-        RegCloseKey(key);
-        return true;
+        return {};
     }
     //
     // Value doesn't exist, return
     // 
     if (status == ERROR_FILE_NOT_FOUND)
     {
-        RegCloseKey(key);
-        return true;
+        return {};
     }
 
-    RegCloseKey(key);
-    return false;
+    return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
 }
 
 inline std::expected<void, Win32Error> uninstall_device_and_driver(

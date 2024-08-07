@@ -96,10 +96,10 @@ namespace devcon
     std::expected<void, nefarius::util::Win32Error> uninstall_driver(const std::wstring& fullInfPath,
                                                                      bool* rebootRequired);
 
-    bool add_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
+    std::expected<void, nefarius::util::Win32Error> add_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
                                  DeviceClassFilterPosition position);
 
-    bool remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
+    std::expected<void, nefarius::util::Win32Error> remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
                                     DeviceClassFilterPosition position);
 
     std::vector<std::expected<void, nefarius::util::Win32Error>> uninstall_device_and_driver(
