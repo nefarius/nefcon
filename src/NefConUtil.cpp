@@ -70,7 +70,7 @@ int main(int argc, char* argv[])
     }
 
     argv.resize(nArgs);
-    std::transform(narrow.begin(), narrow.end(), argv.begin(), [](const std::string& arg) { return arg.c_str(); });
+    std::ranges::transform(narrow, argv.begin(), [](const std::string& arg) { return arg.c_str(); });
 
     argv.push_back(nullptr);
 
