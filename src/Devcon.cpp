@@ -402,7 +402,9 @@ std::expected<void, nefarius::util::Win32Error> devcon::enable_disable_bth_usb_d
 
         params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
         params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
+        // ReSharper disable once CppAssignedValueIsNeverUsed
         params.Scope = DICS_FLAG_GLOBAL;
+        // ReSharper disable once CppAssignedValueIsNeverUsed
         params.StateChange = (state) ? DICS_ENABLE : DICS_DISABLE;
 
         // setup proper parameters            
