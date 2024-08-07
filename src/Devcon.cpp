@@ -1257,9 +1257,9 @@ std::expected<bool, Win32Error> devcon::find_by_hwid(const std::wstring& matchst
                 continue;
             }
 
-            const auto driverGuard = sg::make_scope_guard([&hDevInfo, spDevInfoData]() noexcept
+            const auto driverGuard = sg::make_scope_guard([&hDevInfo, &spDevInfoData]() noexcept
             {
-                SetupDiDestroyDriverInfoList(hDevInfo.get(), (PSP_DEVINFO_DATA)&spDevInfoData, SPDIT_COMPATDRIVER);
+                SetupDiDestroyDriverInfoList(hDevInfo.get(), &spDevInfoData, SPDIT_COMPATDRIVER);
             });
 
             // Get the first info item for this driver
