@@ -150,7 +150,7 @@ std::expected<void, Win32Error> devcon::create(const std::wstring& className, co
         deviceInfoSet,
         &deviceInfoData,
         SPDRP_HARDWAREID,
-        (const PBYTE)hardwareId.c_str(),
+        hardwareId.data(),
         static_cast<DWORD>(hardwareId.size())
     ))
     {

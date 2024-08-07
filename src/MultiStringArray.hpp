@@ -77,6 +77,12 @@ namespace nefarius::util
             return data_.data();
         }
 
+        // Get the raw data
+        unsigned char* data() const
+        {
+            return (unsigned char*)data_.data();
+        }
+
         // Get the size of the raw data in bytes
         [[nodiscard]] size_t size() const
         {
