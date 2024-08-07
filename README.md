@@ -2,6 +2,9 @@
 
 [![MSBuild](https://github.com/nefarius/nefcon/actions/workflows/msbuild.yml/badge.svg)](https://github.com/nefarius/nefcon/actions/workflows/msbuild.yml)
 [![GitHub All Releases](https://img.shields.io/github/downloads/nefarius/nefcon/total)](https://somsubhra.github.io/github-release-stats/?username=nefarius&repository=nefcon)
+[![Discord](https://img.shields.io/discord/346756263763378176.svg)](https://discord.nefarius.at)
+[![GitHub followers](https://img.shields.io/github/followers/nefarius.svg?style=social&label=Follow)](https://github.com/nefarius)
+[![Mastodon Follow](https://img.shields.io/mastodon/follow/109321120351128938?domain=https%3A%2F%2Ffosstodon.org%2F&style=social)](https://fosstodon.org/@Nefarius)
 
 Windows device driver installation and management tool.
 
