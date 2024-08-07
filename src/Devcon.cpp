@@ -954,135 +954,123 @@ std::vector<std::expected<void, Win32Error>> devcon::uninstall_device_and_driver
     return results;
 }
 
-bool devcon::inf_default_install(const std::wstring& fullInfPath, bool* rebootRequired)
+std::expected<void, Win32Error> devcon::inf_default_install(
+    const std::wstring& fullInfPath, bool* rebootRequired)
 {
-    el::Logger* logger = el::Loggers::getLogger("default");
-    uint32_t errCode = ERROR_SUCCESS;
     SYSTEM_INFO sysInfo;
-    auto hInf = INVALID_HANDLE_VALUE;
-    WCHAR InfSectionWithExt[255];
-    WCHAR pszDest[280];
-    BOOLEAN defaultSection = FALSE;
+    WCHAR InfSectionWithExt[LINE_LEN];
+    constexpr int maxCmdLine = 280;
+    WCHAR pszDest[maxCmdLine];
+    BOOLEAN hasDefaultSection = FALSE;
 
     GetNativeSystemInfo(&sysInfo);
 
-    hInf = SetupOpenInfFileW(fullInfPath.c_str(), nullptr, INF_STYLE_WIN4, nullptr);
+    WCHAR normalisedInfPath[MAX_PATH] = {};
 
-    do
+    const auto ret = GetFullPathNameW(fullInfPath.c_str(), MAX_PATH, normalisedInfPath, NULL);
+
+    if ((ret >= MAX_PATH) || (ret == FALSE))
     {
-        if (hInf == INVALID_HANDLE_VALUE)
+        return std::unexpected(Win32Error(ERROR_BAD_PATHNAME));
+    }
+
+    const HINF hInf = SetupOpenInfFileW(normalisedInfPath, nullptr, INF_STYLE_WIN4, nullptr);
+
+    const auto guard = sg::make_scope_guard([hInf]() noexcept
+    {
+        if (hInf != INVALID_HANDLE_VALUE)
         {
-            errCode = GetLastError();
-            logger->error("SetupOpenInfFileW failed with error code %v", errCode);
-            break;
+            SetupCloseInfFile(hInf);
         }
+    });
 
-        if (SetupDiGetActualSectionToInstallW(
-                hInf,
-                L"DefaultInstall",
-                InfSectionWithExt,
-                0xFFu,
-                reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
-                nullptr)
-            && SetupFindFirstLineW(hInf, InfSectionWithExt, nullptr,
-                                   reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
-        {
-            logger->verbose(1, "DefaultInstall section found");
-            defaultSection = TRUE;
+    if (hInf == INVALID_HANDLE_VALUE)
+    {
+        return std::unexpected(Win32Error());
+    }
 
-            if (StringCchPrintfW(pszDest, 280ui64, L"DefaultInstall 132 %ws", fullInfPath.c_str()) < 0)
-            {
-                errCode = GetLastError();
-                logger->error("StringCchPrintfW failed with error code %v", errCode);
-                break;
-            }
-
-            logger->verbose(1, "Calling InstallHinfSectionW");
-
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-            DetourAttach((void**)&real_MessageBoxW, DetourMessageBoxW);
-            DetourAttach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
-            DetourTransactionCommit();
-
-            g_MbCalled = FALSE;
-            g_RestartDialogExCalled = FALSE;
-
-            InstallHinfSectionW(nullptr, nullptr, pszDest, 0);
-
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-            DetourDetach((void**)&real_MessageBoxW, DetourMessageBoxW);
-            DetourDetach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
-            DetourTransactionCommit();
-
-            logger->verbose(1, "InstallHinfSectionW finished");
-
-            //
-            // If a message box call was intercepted, we encountered an error
-            // 
-            if (g_MbCalled)
-            {
-                logger->error(
-                    "The installation encountered an error, make sure there's no reboot pending and try again afterwards");
-                g_MbCalled = FALSE;
-                errCode = ERROR_PNP_REBOOT_REQUIRED;
-                break;
-            }
-        }
-
-        if (!SetupFindFirstLineW(hInf, L"Manufacturer", nullptr,
-                                 reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
-        {
-            logger->verbose(1, "No Manufacturer section found");
-
-            if (!defaultSection)
-            {
-                logger->error("No DefaultInstall and no Manufacturer section, can't continue");
-                errCode = ERROR_SECTION_NOT_FOUND;
-                break;
-            }
-        }
-
-        Newdev newdev;
-        BOOL reboot = FALSE;
-
-        switch (newdev.CallFunction(
-            newdev.fpDiInstallDriverW,
+    if (SetupDiGetActualSectionToInstallW(
+            hInf,
+            L"DefaultInstall",
+            InfSectionWithExt,
+            LINE_LEN,
+            reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
+            nullptr)
+        && SetupFindFirstLineW(
+            hInf,
+            InfSectionWithExt,
             nullptr,
-            fullInfPath.c_str(),
-            0,
-            &reboot
+            reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)
         ))
+    {
+        hasDefaultSection = TRUE;
+
+        if (StringCchPrintfW(pszDest, maxCmdLine, L"DefaultInstall 132 %ws", normalisedInfPath) < 0)
         {
-        case FunctionCallResult::NotAvailable:
-            logger->error("Couldn't find DiInstallDriverW export");
-            SetLastError(ERROR_INVALID_FUNCTION);
-            break;
-        case FunctionCallResult::Failure:
-            errCode = GetLastError();
-            break;
-        case FunctionCallResult::Success:
-            if (rebootRequired)
-            {
-                *rebootRequired = reboot > 0 || g_RestartDialogExCalled;
-                logger->verbose(1, "Set rebootRequired to: %v", *rebootRequired);
-            }
-            errCode = ERROR_SUCCESS;
-            break;
+            return std::unexpected(Win32Error("StringCchPrintfW"));
+        }
+
+        DetourTransactionBegin();
+        DetourUpdateThread(GetCurrentThread());
+        DetourAttach((void**)&real_MessageBoxW, DetourMessageBoxW);
+        DetourAttach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
+        DetourTransactionCommit();
+
+        g_MbCalled = FALSE;
+        g_RestartDialogExCalled = FALSE;
+
+        InstallHinfSectionW(nullptr, nullptr, pszDest, 0);
+
+        DetourTransactionBegin();
+        DetourUpdateThread(GetCurrentThread());
+        DetourDetach((void**)&real_MessageBoxW, DetourMessageBoxW);
+        DetourDetach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
+        DetourTransactionCommit();
+
+        //
+        // If a message box call was intercepted, we encountered an error
+        // 
+        if (g_MbCalled)
+        {
+            g_MbCalled = FALSE;
+            return std::unexpected(Win32Error(ERROR_PNP_REBOOT_REQUIRED, "InstallHinfSectionW"));
         }
     }
-    while (FALSE);
 
-    if (hInf != INVALID_HANDLE_VALUE)
+    if (!SetupFindFirstLineW(hInf, L"Manufacturer", nullptr,
+                             reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
     {
-        SetupCloseInfFile(hInf);
+        if (!hasDefaultSection)
+        {
+            return std::unexpected(Win32Error(ERROR_SECTION_NOT_FOUND, "SetupFindFirstLineW"));
+        }
     }
 
-    logger->verbose(1, "Returning with error code %v", errCode);
+    Newdev newdev;
+    BOOL reboot = FALSE;
 
-    SetLastError(errCode);
-    return errCode == ERROR_SUCCESS;
+    switch (newdev.CallFunction(
+        newdev.fpDiInstallDriverW,
+        nullptr,
+        fullInfPath.c_str(),
+        0,
+        &reboot
+    ))
+    {
+    case FunctionCallResult::NotAvailable:
+        return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
+    case FunctionCallResult::Failure:
+        return std::unexpected(Win32Error());
+    case FunctionCallResult::Success:
+        if (rebootRequired)
+        {
+            *rebootRequired = reboot > 0 || g_RestartDialogExCalled;
+        }
+
+        return {};
+    }
+
+    return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
 }
 
 bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* rebootRequired)
