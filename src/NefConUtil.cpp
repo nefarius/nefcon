@@ -754,22 +754,22 @@ int main(int argc, char* argv[])
             return ERROR_NOT_FOUND;
         }
 
-        for (const devcon::FindByHwIdResult& item : findResult.value())
+        for (const auto& [HardwareIds, Name, Version] : findResult.value())
         {
             std::wstring idValue = std::accumulate(
-                std::begin(item.HardwareIds), std::end(item.HardwareIds), std::wstring(),
+                std::begin(HardwareIds), std::end(HardwareIds), std::wstring(),
                 [](const std::wstring& ss, const std::wstring& s)
                 {
                     return ss.empty() ? s : ss + L", " + s;
                 });
 
             logger->info("Hardware IDs: %v", idValue);
-            logger->info("Name: %v", item.Name);
+            logger->info("Name: %v", Name);
             logger->info("Version: %v.%v.%v.%v",
-                         std::to_wstring(item.Version.Major),
-                         std::to_wstring(item.Version.Minor),
-                         std::to_wstring(item.Version.Build),
-                         std::to_wstring(item.Version.Private)
+                         std::to_wstring(Version.Major),
+                         std::to_wstring(Version.Minor),
+                         std::to_wstring(Version.Build),
+                         std::to_wstring(Version.Private)
             );
         }
 
