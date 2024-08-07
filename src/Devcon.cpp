@@ -73,7 +73,7 @@ inline std::vector<wchar_t> BuildMultiString(const std::vector<std::wstring>& da
     if (data.empty())
     {
         // Build a vector containing just two NULs
-        return std::vector<wchar_t>(2, L'\0');
+        return std::vector(2, L'\0');
     }
 
     // Get the total length in wchar_ts of the multi-string
