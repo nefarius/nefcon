@@ -57,7 +57,7 @@ namespace devcon
 
     std::expected<void, nefarius::util::Win32Error> restart_bth_usb_device(int instance = 0);
 
-    bool enable_disable_bth_usb_device(bool state);
+    std::expected<void, nefarius::util::Win32Error> enable_disable_bth_usb_device(bool state, int instance = 0);
 
     std::expected<void, nefarius::util::Win32Error> install_driver(const std::wstring& fullInfPath, bool* rebootRequired);
 

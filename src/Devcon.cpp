@@ -337,108 +337,90 @@ std::expected<void, Win32Error> devcon::restart_bth_usb_device(int instance)
     return std::unexpected(Win32Error(ERROR_NOT_FOUND));
 }
 
-bool devcon::enable_disable_bth_usb_device(bool state)
+std::expected<void, nefarius::util::Win32Error> devcon::enable_disable_bth_usb_device(bool state, int instance)
 {
-    DWORD i, err;
-    bool found = false, succeeded = false;
-
-    HDEVINFO hDevInfo;
+    bool found = false;
     SP_DEVINFO_DATA spDevInfoData;
 
-    hDevInfo = SetupDiGetClassDevs(
+    HDEVINFO hDevInfo = SetupDiGetClassDevs(
         &GUID_DEVCLASS_BLUETOOTH,
         nullptr,
         nullptr,
         DIGCF_PRESENT
     );
+
+    const auto guard = sg::make_scope_guard([hDevInfo]() noexcept
+    {
+        if (hDevInfo != INVALID_HANDLE_VALUE)
+        {
+            SetupDiDestroyDeviceInfoList(hDevInfo);
+        }
+    });
+
     if (hDevInfo == INVALID_HANDLE_VALUE)
     {
-        return succeeded;
+        return std::unexpected(Win32Error(GetLastError(), "SetupDiGetClassDevs"));
     }
 
-    spDevInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-    for (i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &spDevInfoData); i++)
+    if (!SetupDiEnumDeviceInfo(hDevInfo, instance, &spDevInfoData))
     {
-        DWORD DataT;
-        LPTSTR p, buffer = nullptr;
-        DWORD buffersize = 0;
+        return std::unexpected(Win32Error(GetLastError(), "SetupDiEnumDeviceInfo"));
+    }
 
-        // get all devices info
-        while (!SetupDiGetDeviceRegistryProperty(hDevInfo,
-                                                 &spDevInfoData,
-                                                 SPDRP_ENUMERATOR_NAME,
-                                                 &DataT,
-                                                 (PBYTE)buffer,
-                                                 buffersize,
-                                                 &buffersize))
+    DWORD bufferSize = 0;
+    const auto enumeratorProperty = GetDeviceRegistryProperty(
+        hDevInfo,
+        &spDevInfoData,
+        SPDRP_ENUMERATOR_NAME,
+        NULL,
+        &bufferSize
+    );
+
+    if (!enumeratorProperty)
+    {
+        return std::unexpected(enumeratorProperty.error());
+    }
+
+    const LPTSTR buffer = (LPTSTR)enumeratorProperty.value();
+
+    // find device with enumerator name "USB"
+    for (LPTSTR p = buffer; p && *p && (p < &buffer[bufferSize]); p += lstrlen(p) + sizeof(TCHAR))
+    {
+        if (!_tcscmp(TEXT("USB"), p))
         {
-            if (GetLastError() == ERROR_INVALID_DATA)
-            {
-                break;
-            }
-            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-            {
-                if (buffer)
-                    LocalFree(buffer);
-                buffer = static_cast<wchar_t*>(LocalAlloc(LPTR, buffersize));
-            }
-            else
-            {
-                goto cleanup_DeviceInfo;
-            }
-        }
-
-        if (GetLastError() == ERROR_INVALID_DATA)
-            continue;
-
-        //find device with enumerator name "USB"
-        for (p = buffer; *p && (p < &buffer[buffersize]); p += lstrlen(p) + sizeof(TCHAR))
-        {
-            if (!_tcscmp(TEXT("USB"), p))
-            {
-                found = true;
-                break;
-            }
-        }
-
-        if (buffer)
-            LocalFree(buffer);
-
-        // if device found change it's state
-        if (found)
-        {
-            SP_PROPCHANGE_PARAMS params;
-
-            params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
-            params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
-            params.Scope = DICS_FLAG_GLOBAL;
-            params.StateChange = (state) ? DICS_ENABLE : DICS_DISABLE;
-
-            // setup proper parameters            
-            if (!SetupDiSetClassInstallParams(hDevInfo, &spDevInfoData, &params.ClassInstallHeader, sizeof(params)))
-            {
-                err = GetLastError();
-            }
-            else
-            {
-                // use parameters
-                if (!SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, hDevInfo, &spDevInfoData))
-                {
-                    err = GetLastError(); // error here  
-                }
-                else { succeeded = true; }
-            }
-
+            found = true;
             break;
         }
     }
 
-cleanup_DeviceInfo:
-    err = GetLastError();
-    SetupDiDestroyDeviceInfoList(hDevInfo);
-    SetLastError(err);
+    LocalFree(buffer);
 
-    return succeeded;
+    // if device found change it's state
+    if (found)
+    {
+        SP_PROPCHANGE_PARAMS params;
+
+        params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
+        params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
+        params.Scope = DICS_FLAG_GLOBAL;
+        params.StateChange = (state) ? DICS_ENABLE : DICS_DISABLE;
+
+        // setup proper parameters            
+        if (!SetupDiSetClassInstallParams(hDevInfo, &spDevInfoData, &params.ClassInstallHeader, sizeof(params)))
+        {
+            return std::unexpected(Win32Error(GetLastError(), "SetupDiSetClassInstallParams"));
+        }
+
+        // use parameters
+        if (!SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, hDevInfo, &spDevInfoData))
+        {
+            return std::unexpected(Win32Error(GetLastError(), "SetupDiCallClassInstaller"));
+        }
+
+        return {};
+    }
+
+    return std::unexpected(Win32Error(ERROR_NOT_FOUND));
 }
 
 std::expected<void, Win32Error> devcon::install_driver(const std::wstring& fullInfPath,
