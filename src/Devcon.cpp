@@ -109,7 +109,7 @@ inline std::vector<wchar_t> BuildMultiString(const std::vector<std::wstring>& da
 std::expected<void, Win32Error> devcon::create(const std::wstring& className, const GUID* classGuid,
                                                const WideMultiStringArray& hardwareId)
 {
-    const auto deviceInfoSet = SetupDiCreateDeviceInfoList(classGuid, nullptr);
+    const HDEVINFO deviceInfoSet = SetupDiCreateDeviceInfoList(classGuid, nullptr);
 
     const auto guard = sg::make_scope_guard([deviceInfoSet]() noexcept
     {
