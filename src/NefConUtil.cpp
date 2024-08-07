@@ -23,7 +23,7 @@ using GUIDFromString_t = BOOL(WINAPI*)(_In_ LPCSTR, _Out_ LPGUID);
 
 static bool GUIDFromString(const std::string& input, GUID* guid);
 
-static void CustomizeEasyLogging();
+static void CustomizeEasyLoggingColeredConsole();
 
 
 #if defined(NEFCON_WINMAIN)
@@ -77,11 +77,10 @@ int main(int argc, char* argv[])
     argv.push_back(nullptr);
 
     START_EASYLOGGINGPP(nArgs, &argv[0]);
-    CustomizeEasyLogging();
     cmdl.parse(nArgs, &argv[0]);
 #else
     START_EASYLOGGINGPP(argc, argv);
-    CustomizeEasyLogging();
+    CustomizeEasyLoggingColeredConsole();
     cmdl.parse(argv);
 #endif
 
@@ -914,20 +913,22 @@ namespace Color
     const std::string WHITE = "\033[37m";
 }
 
-static void CustomizeEasyLogging()
+static void CustomizeEasyLoggingColeredConsole()
 {
     el::Configurations conf;
     conf.setToDefault();
 
-    // Set format for each log level with custom colors
-    conf.set(el::Level::Global, el::ConfigurationType::Format, "%datetime %level %msg");
+    // Disable STDOUT logging for all log levels
+    conf.set(el::Level::Global, el::ConfigurationType::ToStandardOutput, "false");
 
-    conf.set(el::Level::Debug, el::ConfigurationType::Format, Color::CYAN + "%datetime %level %msg" + Color::RESET);
-    conf.set(el::Level::Info, el::ConfigurationType::Format, Color::GREEN + "%datetime %level %msg" + Color::RESET);
-    conf.set(el::Level::Warning, el::ConfigurationType::Format, Color::YELLOW + "%datetime %level %msg" + Color::RESET);
-    conf.set(el::Level::Error, el::ConfigurationType::Format, Color::RED + "%datetime %level %msg" + Color::RESET);
-    conf.set(el::Level::Fatal, el::ConfigurationType::Format, Color::MAGENTA + "%datetime %level %msg" + Color::RESET);
-    conf.set(el::Level::Verbose, el::ConfigurationType::Format, Color::WHITE + "%datetime %level %msg" + Color::RESET);
+    el::Loggers::addFlag(el::LoggingFlag::ImmediateFlush);
+
+    // Register the custom log dispatch callback
+    el::Helpers::installLogDispatchCallback<ConsoleColorLogDispatchCallback>("ConsoleColorLogDispatchCallback");
+
+    // Enable the custom log dispatch callback
+    el::Helpers::logDispatchCallback<ConsoleColorLogDispatchCallback>("ConsoleColorLogDispatchCallback")->
+        setEnabled(true);
 
     // Apply the configuration
     el::Loggers::reconfigureLogger("default", conf);

@@ -38,7 +38,6 @@
 // 
 #include <argh.h>
 #include <easylogging++.h>
-#include <colorconsole.hpp>
 
 //
 // Internal
@@ -48,3 +47,4 @@
 #include "NefConSetup.h"
 #include "UniUtil.h"
 #include "ScopeGuards.hpp"
+#include "ColorLogging.hpp"
