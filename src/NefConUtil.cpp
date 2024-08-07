@@ -467,7 +467,8 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = devcon::create(ConvertAnsiToWide(className), &clID, ConvertAnsiToWide(hwId));
+        auto ret = devcon::create(ConvertAnsiToWide(className), &clID,
+                                  nefarius::util::WideMultiStringArray(ConvertAnsiToWide(hwId)));
 
         if (!ret)
         {

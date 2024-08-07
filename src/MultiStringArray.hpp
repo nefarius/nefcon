@@ -22,6 +22,12 @@ namespace nefarius::util
             from_vector(strings);
         }
 
+        // Construct from a single string
+        explicit MultiStringArray(const StringType& str)
+        {
+            from_string(str);
+        }
+
         // Convert to a vector of strings
         std::vector<StringType> to_vector() const
         {
@@ -54,6 +60,15 @@ namespace nefarius::util
                 *p++ = CharType('\0');
             }
             *p = CharType('\0');
+        }
+
+        // Initialize from a single string
+        void from_string(const StringType& str)
+        {
+            data_.resize(str.size() + 2); // Original string size + double-NULL termination
+            std::memcpy(data_.data(), str.data(), str.size() * sizeof(CharType));
+            data_[str.size()] = CharType('\0');
+            data_[str.size() + 1] = CharType('\0');
         }
 
         // Get the raw data

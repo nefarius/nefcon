@@ -37,6 +37,10 @@
 // 
 #include <detours/detours.h>
 
+#include <scope_guard.hpp>
+
+#include "MultiStringArray.hpp"
+
 using namespace nefarius::util;
 
 static decltype(MessageBoxW)* real_MessageBoxW = MessageBoxW;
@@ -102,17 +106,22 @@ inline std::vector<wchar_t> BuildMultiString(const std::vector<std::wstring>& da
     return multiString;
 }
 
-bool devcon::create(const std::wstring& className, const GUID* classGuid, const std::wstring& hardwareId)
+std::expected<void, Win32Error> devcon::create(const std::wstring& className, const GUID* classGuid,
+                                               const WideMultiStringArray& hardwareId)
 {
-    el::Logger* logger = el::Loggers::getLogger("default");
-    bool success = false;
-    DWORD win32Error = ERROR_SUCCESS;
     const auto deviceInfoSet = SetupDiCreateDeviceInfoList(classGuid, nullptr);
+
+    const auto guard = sg::make_scope_guard([deviceInfoSet]() noexcept
+    {
+        if (deviceInfoSet != INVALID_HANDLE_VALUE)
+        {
+            SetupDiDestroyDeviceInfoList(deviceInfoSet);
+        }
+    });
 
     if (INVALID_HANDLE_VALUE == deviceInfoSet)
     {
-        logger->error("SetupDiCreateDeviceInfoList failed with error code %v", GetLastError());
-        goto exit;
+        return std::unexpected(Win32Error(GetLastError(), "SetupDiCreateDeviceInfoList"));
     }
 
     SP_DEVINFO_DATA deviceInfoData;
@@ -131,9 +140,7 @@ bool devcon::create(const std::wstring& className, const GUID* classGuid, const 
         &deviceInfoData
     ))
     {
-        win32Error = GetLastError();
-        logger->error("SetupDiCreateDeviceInfoW failed with error code %v", win32Error);
-        goto exit;
+        return std::unexpected(Win32Error(GetLastError(), "SetupDiCreateDeviceInfoW"));
     }
 
     //
@@ -147,9 +154,7 @@ bool devcon::create(const std::wstring& className, const GUID* classGuid, const 
         static_cast<DWORD>(hardwareId.size() * sizeof(WCHAR))
     ))
     {
-        win32Error = GetLastError();
-        logger->error("SetupDiSetDeviceRegistryPropertyW failed with error code %v", win32Error);
-        goto exit;
+        return std::unexpected(Win32Error(GetLastError(), "SetupDiSetDeviceRegistryPropertyW"));
     }
 
     //
@@ -161,23 +166,10 @@ bool devcon::create(const std::wstring& className, const GUID* classGuid, const 
         &deviceInfoData
     ))
     {
-        win32Error = GetLastError();
-        logger->error("SetupDiCallClassInstaller failed with error code %v", win32Error);
-        goto exit;
+        return std::unexpected(Win32Error(GetLastError(), "SetupDiCallClassInstaller"));
     }
 
-    success = true;
-
-exit:
-
-    if (deviceInfoSet != INVALID_HANDLE_VALUE)
-    {
-        SetupDiDestroyDeviceInfoList(deviceInfoSet);
-    }
-
-    SetLastError(win32Error);
-
-    return success;
+    return {};
 }
 
 std::expected<void, Win32Error> devcon::update(const std::wstring& hardwareId, const std::wstring& fullInfPath,

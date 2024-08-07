@@ -4,6 +4,7 @@
 #include <string>
 #include <expected>
 
+#include "MultiStringArray.hpp"
 #include "Win32Error.hpp"
 
 namespace devcon
@@ -29,7 +30,7 @@ namespace devcon
 	 *
 	 * @returns	True if it succeeds, false if it fails.
 	 */
-	bool create(const std::wstring& className, const GUID* classGuid, const std::wstring& hardwareId);
+	std::expected<void, nefarius::util::Win32Error> create(const std::wstring& className, const GUID* classGuid, const nefarius::util::WideMultiStringArray& hardwareId);
 
     std::expected<void, nefarius::util::Win32Error> update(const std::wstring& hardwareId, const std::wstring& fullInfPath, bool* rebootRequired, bool force = false);
 
