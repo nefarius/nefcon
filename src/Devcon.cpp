@@ -336,7 +336,7 @@ std::expected<void, Win32Error> devcon::restart_bth_usb_device(int instance)
     return std::unexpected(Win32Error(ERROR_NOT_FOUND));
 }
 
-std::expected<void, nefarius::util::Win32Error> devcon::enable_disable_bth_usb_device(bool state, int instance)
+std::expected<void, Win32Error> devcon::enable_disable_bth_usb_device(bool state, int instance)
 {
     bool found = false;
     SP_DEVINFO_DATA spDevInfoData;
