@@ -152,6 +152,11 @@ namespace colorwin
         }
         #endif
 
+        std::string str(const std::string& input)
+        {
+            return input;
+        }
+
     private:
         withcolor(withcolor &);
         withcolor& operator=(withcolor);

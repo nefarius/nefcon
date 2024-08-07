@@ -29,22 +29,19 @@
 #include <optional>
 
 //
-// CLI argument parser
-// 
-#include <argh.h>
-
-//
 // Add some colors to console
 // 
 #include "colorwin.hpp"
 
 //
-// Logging
+// Vcpkg Packages
 // 
+#include <argh.h>
 #include <easylogging++.h>
+#include <colorconsole.hpp>
 
 //
-// Setup helpers
+// Internal
 // 
 #include "MultiStringArray.hpp"
 #include "Devcon.h"

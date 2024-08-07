@@ -9,6 +9,7 @@
     "easyloggingpp",
     "detours",
     "scope-guard",
-    "wil"
+    "wil",
+    "color-console"
   ]
 }
