@@ -12,19 +12,33 @@ Windows device driver installation and management tool.
 
 This little self-contained, no-dependency tool can be built either as a console application or a Windows application which has no visible window (ideal to use in combination with setup makers). It offers a command-line-based driver (un-)installer and allows for simple manipulation of class filter entries. Run `nefconc.exe --help` to see all the options offered.
 
+## Motivation
+
+Windows Device Driver management is and always has been hard. The APIs involved are old, moody and come with pitfalls. Historically the [`devcon`](https://github.com/microsoft/Windows-driver-samples/tree/b3af8c8f9bd508f54075da2f2516b31d05cd52c8/setup/devcon) tool or nowadays `pnputil` have been used to offload these tedious tasks, but unintuitive and sparsely documented command line arguments and error propagation make them poor candidates for automation in e.g. setup engines. Grown tired of these limitations I made this "devcon clone" available under a permissive license which offers the following highlighted features and more:
+
+- Allows for true window-less execution
+- Actively suppresses and works around user interaction inconsistencies ("reboot required" dialogs and OS-included bugs)
+- Offers optional logging to `stdout` or file
+- *Sane* command line arguments 😁
+- Class filter values manipulation
+
 ## Installation
 
 Binaries are available to download in the [releases](https://github.com/nefarius/nefcon/releases/latest) page, just download and extract. However, if you are using a package manager, you can use one of the following options:
 
 ### Scoop
+
 [`nefcon`](https://scoop.sh/#/apps?q=nefcon&s=0&d=1&o=true) is available in the [Extras](https://github.com/ScoopInstaller/Extras) bucket:
+
 ```text
 scoop bucket add extras
 scoop install nefcon
 ```
 
 ### Winget
+
 [`nefcon`](https://github.com/microsoft/winget-pkgs/tree/master/manifests/n/Nefarius/nefcon) is available in the [winget-pkgs](https://github.com/microsoft/winget-pkgs) repository:
+
 ```text
 winget install nefcon
 ```
