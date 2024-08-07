@@ -1105,7 +1105,7 @@ std::expected<void, Win32Error> devcon::inf_default_uninstall(const std::wstring
         return std::unexpected(Win32Error(ERROR_BAD_PATHNAME));
     }
 
-    HINF hInf = SetupOpenInfFileW(normalisedInfPath, nullptr, INF_STYLE_WIN4, nullptr);
+    const HINF hInf = SetupOpenInfFileW(normalisedInfPath, nullptr, INF_STYLE_WIN4, nullptr);
 
     const auto guard = sg::make_scope_guard([hInf]() noexcept
     {
