@@ -123,7 +123,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        devcon::DeviceClassFilterPosition::Value pos;
+        devcon::DeviceClassFilterPosition pos;
 
         if (position == "upper")
         {
@@ -200,7 +200,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        devcon::DeviceClassFilterPosition::Value pos;
+        devcon::DeviceClassFilterPosition pos;
 
         if (position == "upper")
         {

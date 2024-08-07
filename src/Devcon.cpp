@@ -463,7 +463,7 @@ bool devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequi
 }
 
 bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
-                                     DeviceClassFilterPosition::Value position)
+                                     DeviceClassFilterPosition position)
 {
     el::Logger* logger = el::Loggers::getLogger("default");
     auto key = SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS);
@@ -589,7 +589,7 @@ bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& 
 }
 
 bool devcon::remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
-                                        DeviceClassFilterPosition::Value position)
+                                        DeviceClassFilterPosition position)
 {
     el::Logger* logger = el::Loggers::getLogger("default");
     auto key = SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS);
