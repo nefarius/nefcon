@@ -8,6 +8,7 @@
     "argh",
     "easyloggingpp",
     "detours",
-    "scope-guard"
+    "scope-guard",
+    "wil"
   ]
 }

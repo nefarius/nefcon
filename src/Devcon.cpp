@@ -34,11 +34,11 @@
 #include "LibraryHelper.hpp"
 
 //
-// Hooking
+// Packages
 // 
 #include <detours/detours.h>
-
 #include <scope_guard.hpp>
+#include <wil/resource.h>
 
 #include "MultiStringArray.hpp"
 
@@ -107,7 +107,7 @@ inline std::vector<wchar_t> BuildMultiString(const std::vector<std::wstring>& da
     return multiString;
 }
 
-static std::expected<PBYTE, Win32Error> GetDeviceRegistryProperty(
+static std::expected<wil::unique_hlocal_ptr<PBYTE>, Win32Error> GetDeviceRegistryProperty(
     _In_ HDEVINFO DeviceInfoSet,
     _In_ PSP_DEVINFO_DATA DeviceInfoData,
     _In_ DWORD Property,
@@ -163,7 +163,7 @@ static std::expected<PBYTE, Win32Error> GetDeviceRegistryProperty(
     if (BufferSize)
         *BufferSize = sizeRequired;
 
-    return buffer;
+    return wil::make_unique_hlocal<PBYTE>(buffer);
 }
 
 std::expected<void, Win32Error> devcon::create(const std::wstring& className, const GUID* classGuid,
@@ -310,7 +310,7 @@ std::expected<void, Win32Error> devcon::restart_bth_usb_device(int instance)
         return std::unexpected(enumeratorProperty.error());
     }
 
-    const LPTSTR buffer = (LPTSTR)enumeratorProperty.value();
+    const LPTSTR buffer = (LPTSTR)enumeratorProperty.value().get();
 
     // find device with enumerator name "USB"
     for (LPTSTR p = buffer; p && *p && (p < &buffer[bufferSize]); p += lstrlen(p) + sizeof(TCHAR))
@@ -321,8 +321,6 @@ std::expected<void, Win32Error> devcon::restart_bth_usb_device(int instance)
             break;
         }
     }
-
-    LocalFree(buffer);
 
     // if device found restart
     if (found)
@@ -382,7 +380,7 @@ std::expected<void, nefarius::util::Win32Error> devcon::enable_disable_bth_usb_d
         return std::unexpected(enumeratorProperty.error());
     }
 
-    const LPTSTR buffer = (LPTSTR)enumeratorProperty.value();
+    const LPTSTR buffer = (LPTSTR)enumeratorProperty.value().get();
 
     // find device with enumerator name "USB"
     for (LPTSTR p = buffer; p && *p && (p < &buffer[bufferSize]); p += lstrlen(p) + sizeof(TCHAR))
@@ -393,8 +391,6 @@ std::expected<void, nefarius::util::Win32Error> devcon::enable_disable_bth_usb_d
             break;
         }
     }
-
-    LocalFree(buffer);
 
     // if device found change it's state
     if (found)
@@ -914,7 +910,7 @@ std::vector<std::expected<void, Win32Error>> devcon::uninstall_device_and_driver
             continue;
         }
 
-        LPWSTR buffer = (LPWSTR)hwIdBuffer.value();
+        LPWSTR buffer = (LPWSTR)hwIdBuffer.value().get();
 
         //
         // find device matching hardware ID
