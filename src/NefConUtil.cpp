@@ -521,16 +521,20 @@ int main(int argc, char* argv[])
 
         bool rebootRequired;
 
-        auto ret = devcon::uninstall_device_and_driver(&clID, ConvertAnsiToWide(hwId), &rebootRequired);
+        auto results = devcon::uninstall_device_and_driver(&clID, ConvertAnsiToWide(hwId), &rebootRequired);
 
-        if (!ret)
+        // TODO: finish proper error propagation!
+        for (const auto& item : results)
         {
-            logger->error("Failed to delete device node, error: %v",
-                          winapi::GetLastErrorStdStr());
-            std::cout << color(red) <<
-                "Failed to delete device node, error: "
-                << winapi::GetLastErrorStdStr() << std::endl;
-            return GetLastError();
+            if (!item)
+            {
+                logger->error("Failed to delete device node, error: %v",
+                              winapi::GetLastErrorStdStr());
+                std::cout << color(red) <<
+                    "Failed to delete device node, error: "
+                    << winapi::GetLastErrorStdStr() << std::endl;
+                return GetLastError();
+            }
         }
 
         logger->info("Device and driver removed successfully");

@@ -69,7 +69,7 @@ namespace devcon
     bool remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
                                     DeviceClassFilterPosition position);
 
-    bool uninstall_device_and_driver(const GUID* classGuid, const std::wstring& hardwareId, bool* rebootRequired);
+    std::vector<std::expected<void, nefarius::util::Win32Error>> uninstall_device_and_driver(const GUID* classGuid, const std::wstring& hardwareId, bool* rebootRequired);
 
     bool inf_default_install(const std::wstring& fullInfPath, bool* rebootRequired);
 
