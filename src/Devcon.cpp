@@ -1134,7 +1134,7 @@ std::expected<void, Win32Error> devcon::inf_default_uninstall(const std::wstring
             reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)
         ))
     {
-        if (StringCchPrintfW(pszDest, 280ui64, L"DefaultUninstall 132 %ws", normalisedInfPath) < 0)
+        if (StringCchPrintfW(pszDest, maxCmdLine, L"DefaultUninstall 132 %ws", normalisedInfPath) < 0)
         {
             return std::unexpected(Win32Error("StringCchPrintfW"));
         }
