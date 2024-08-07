@@ -59,9 +59,11 @@ namespace devcon
 
     std::expected<void, nefarius::util::Win32Error> enable_disable_bth_usb_device(bool state, int instance = 0);
 
-    std::expected<void, nefarius::util::Win32Error> install_driver(const std::wstring& fullInfPath, bool* rebootRequired);
+    std::expected<void, nefarius::util::Win32Error> install_driver(const std::wstring& fullInfPath,
+                                                                   bool* rebootRequired);
 
-    std::expected<void, nefarius::util::Win32Error> uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequired);
+    std::expected<void, nefarius::util::Win32Error> uninstall_driver(const std::wstring& fullInfPath,
+                                                                     bool* rebootRequired);
 
     bool add_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
                                  DeviceClassFilterPosition position);
@@ -69,7 +71,8 @@ namespace devcon
     bool remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
                                     DeviceClassFilterPosition position);
 
-    std::vector<std::expected<void, nefarius::util::Win32Error>> uninstall_device_and_driver(const GUID* classGuid, const std::wstring& hardwareId, bool* rebootRequired);
+    std::vector<std::expected<void, nefarius::util::Win32Error>> uninstall_device_and_driver(
+        const GUID* classGuid, const std::wstring& hardwareId, bool* rebootRequired);
 
     bool inf_default_install(const std::wstring& fullInfPath, bool* rebootRequired);
 
