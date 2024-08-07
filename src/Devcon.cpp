@@ -596,7 +596,7 @@ std::expected<void, Win32Error> devcon::add_device_class_filter(const GUID* clas
     return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
 }
 
-std::expected<void, nefarius::util::Win32Error> devcon::remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
+std::expected<void, Win32Error> devcon::remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
                                         DeviceClassFilterPosition position)
 {
     HKEYHandleGuard key(SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS));
