@@ -5,7 +5,12 @@
 #include "colorwin.hpp"
 #include <easylogging++.h>
 
-
+/**
+ * Custom log dispatcher printing on the console (terminal) with color support.
+ *
+ * @author	Benjamin "Nefarius" Hoeglinger-Stelzer
+ * @date	08.08.2024
+ */
 class ConsoleColorLogDispatchCallback : public el::LogDispatchCallback
 {
     std::unordered_map<el::Level, colorwin::CW_COLORS> logLevelToColor = {
