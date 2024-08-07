@@ -151,7 +151,7 @@ std::expected<void, Win32Error> devcon::create(const std::wstring& className, co
         &deviceInfoData,
         SPDRP_HARDWAREID,
         (const PBYTE)hardwareId.c_str(),
-        static_cast<DWORD>(hardwareId.size() * sizeof(WCHAR))
+        static_cast<DWORD>(hardwareId.size())
     ))
     {
         return std::unexpected(Win32Error(GetLastError(), "SetupDiSetDeviceRegistryPropertyW"));

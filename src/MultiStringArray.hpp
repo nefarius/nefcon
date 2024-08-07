@@ -77,8 +77,14 @@ namespace nefarius::util
             return data_.data();
         }
 
-        // Get the size of the raw data
+        // Get the size of the raw data in bytes
         [[nodiscard]] size_t size() const
+        {
+            return data_.size() * sizeof(CharType);
+        }
+
+        // Get the size of the raw data in characters
+        [[nodiscard]] size_t chars() const
         {
             return data_.size();
         }
