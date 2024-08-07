@@ -958,9 +958,9 @@ std::expected<void, Win32Error> devcon::inf_default_install(
     const std::wstring& fullInfPath, bool* rebootRequired)
 {
     SYSTEM_INFO sysInfo;
-    WCHAR InfSectionWithExt[LINE_LEN];
+    WCHAR InfSectionWithExt[LINE_LEN] = {};
     constexpr int maxCmdLine = 280;
-    WCHAR pszDest[maxCmdLine];
+    WCHAR pszDest[maxCmdLine] = {};
     BOOLEAN hasDefaultSection = FALSE;
 
     GetNativeSystemInfo(&sysInfo);
@@ -989,6 +989,9 @@ std::expected<void, Win32Error> devcon::inf_default_install(
         return std::unexpected(Win32Error());
     }
 
+    //
+    // Try default section first, which is common to class filter driver, filesystem drivers and alike
+    // 
     if (SetupDiGetActualSectionToInstallW(
             hInf,
             L"DefaultInstall",
@@ -1037,9 +1040,15 @@ std::expected<void, Win32Error> devcon::inf_default_install(
         }
     }
 
+    //
+    // If we have no Default, but a Manufacturer section we can attempt classic installation
+    // 
     if (!SetupFindFirstLineW(hInf, L"Manufacturer", nullptr,
                              reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
     {
+        //
+        // We need either one or the other, this INF appears to not be compatible with this install method
+        // 
         if (!hasDefaultSection)
         {
             return std::unexpected(Win32Error(ERROR_SECTION_NOT_FOUND, "SetupFindFirstLineW"));
@@ -1064,7 +1073,7 @@ std::expected<void, Win32Error> devcon::inf_default_install(
     case FunctionCallResult::Success:
         if (rebootRequired)
         {
-            *rebootRequired = reboot > 0 || g_RestartDialogExCalled;
+            *rebootRequired = reboot > FALSE || g_RestartDialogExCalled;
         }
 
         return {};
