@@ -107,18 +107,21 @@ namespace devcon
     std::expected<void, nefarius::util::Win32Error> uninstall_driver(const std::wstring& fullInfPath,
                                                                      bool* rebootRequired);
 
-    std::expected<void, nefarius::util::Win32Error> add_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
-                                 DeviceClassFilterPosition position);
+    std::expected<void, nefarius::util::Win32Error> add_device_class_filter(
+        const GUID* classGuid, const std::wstring& filterName, DeviceClassFilterPosition position);
 
-    std::expected<void, nefarius::util::Win32Error> remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
-                                    DeviceClassFilterPosition position);
+    std::expected<void, nefarius::util::Win32Error> remove_device_class_filter(
+        const GUID* classGuid, const std::wstring& filterName, DeviceClassFilterPosition position);
 
     std::vector<std::expected<void, nefarius::util::Win32Error>> uninstall_device_and_driver(
         const GUID* classGuid, const std::wstring& hardwareId, bool* rebootRequired);
 
-    std::expected<void, nefarius::util::Win32Error> inf_default_install(const std::wstring& fullInfPath, bool* rebootRequired);
+    std::expected<void, nefarius::util::Win32Error> inf_default_install(const std::wstring& fullInfPath,
+                                                                        bool* rebootRequired);
 
-    std::expected<void, nefarius::util::Win32Error> inf_default_uninstall(const std::wstring& fullInfPath, bool* rebootRequired);
+    std::expected<void, nefarius::util::Win32Error> inf_default_uninstall(
+        const std::wstring& fullInfPath, bool* rebootRequired);
 
-    std::expected<std::vector<FindByHwIdResult>, nefarius::util::Win32Error> find_by_hwid(const std::wstring& matchstring);
+    std::expected<std::vector<FindByHwIdResult>, nefarius::util::Win32Error> find_by_hwid(
+        const std::wstring& matchstring);
 };
