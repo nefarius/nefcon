@@ -134,6 +134,10 @@ static std::expected<PBYTE, Win32Error> GetDeviceRegistryProperty(
     {
         buffer = (PBYTE)LocalAlloc(LPTR, sizeRequired);
     }
+    else if (win32Error == ERROR_INVALID_DATA)
+    {
+        return std::unexpected(Win32Error(ERROR_NOT_FOUND, "SetupDiGetDeviceRegistryProperty"));
+    }
     else
     {
         return std::unexpected(Win32Error(win32Error, "SetupDiGetDeviceRegistryProperty"));
