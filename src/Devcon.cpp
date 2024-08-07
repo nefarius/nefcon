@@ -1138,12 +1138,13 @@ std::expected<void, Win32Error> devcon::inf_default_uninstall(const std::wstring
     return std::unexpected(Win32Error(ERROR_SECTION_NOT_FOUND));
 }
 
-std::expected<bool, Win32Error> devcon::find_by_hwid(const std::wstring& matchstring)
+std::expected<std::vector<devcon::FindByHwIdResult>, Win32Error> devcon::find_by_hwid(const std::wstring& matchstring)
 {
-    el::Logger* logger = el::Loggers::getLogger("default");
     bool found = FALSE;
     DWORD total = 0;
     SP_DEVINFO_DATA spDevInfoData;
+
+    std::vector<FindByHwIdResult> results;
 
     HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
         nullptr,
@@ -1203,13 +1204,7 @@ std::expected<bool, Win32Error> devcon::find_by_hwid(const std::wstring& matchst
             found = TRUE;
             total++;
 
-            std::wstring idValue = std::accumulate(std::begin(entries), std::end(entries), std::wstring(),
-                                                   [](const std::wstring& ss, const std::wstring& s)
-                                                   {
-                                                       return ss.empty() ? s : ss + L", " + s;
-                                                   });
-
-            logger->info("Hardware IDs: %v", idValue);
+            FindByHwIdResult result{entries};
 
             const auto descProperty = GetDeviceRegistryProperty(
                 hDevInfo.get(),
@@ -1249,7 +1244,7 @@ std::expected<bool, Win32Error> devcon::find_by_hwid(const std::wstring& matchst
                 nameBuffer = (LPTSTR)descProperty.value().get();
             }
 
-            logger->info("Name: %v", std::wstring(nameBuffer));
+            result.Name = std::wstring(nameBuffer);
 
             // Build a list of driver info items that we will retrieve below
             if (!SetupDiBuildDriverInfoList(hDevInfo.get(), &spDevInfoData, SPDIT_COMPATDRIVER))
@@ -1271,14 +1266,16 @@ std::expected<bool, Win32Error> devcon::find_by_hwid(const std::wstring& matchst
                 continue;
             }
 
-            logger->info("Version: %v.%v.%v.%v", std::to_wstring((drvInfo.DriverVersion >> 48) & 0xFFFF),
-                         std::to_wstring((drvInfo.DriverVersion >> 32) & 0xFFFF),
-                         std::to_wstring((drvInfo.DriverVersion >> 16) & 0xFFFF),
-                         std::to_wstring(drvInfo.DriverVersion & 0x0000FFFF));
+            result.Version.Major = (drvInfo.DriverVersion >> 48) & 0xFFFF;
+            result.Version.Minor = (drvInfo.DriverVersion >> 32) & 0xFFFF;
+            result.Version.Build = (drvInfo.DriverVersion >> 16) & 0xFFFF;
+            result.Version.Private = drvInfo.DriverVersion & 0x0000FFFF;
+
+            results.push_back(result);
         }
     }
 
-    return found;
+    return results;
 }
 
 

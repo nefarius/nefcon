@@ -23,6 +23,26 @@ namespace devcon
         Lower
     };
 
+    struct FindByHwIdResult
+    {
+        std::vector<std::wstring> HardwareIds;
+
+        std::wstring Name;
+
+        union
+        {
+            struct
+            {
+                uint16_t Major;
+                uint16_t Minor;
+                uint16_t Build;
+                uint16_t Private;
+            };
+
+            uint64_t Value;
+        } Version;
+    };
+
     /**
      * Creates a new root-enumerated device node for a driver to load on to.
      *
@@ -89,5 +109,5 @@ namespace devcon
 
     std::expected<void, nefarius::util::Win32Error> inf_default_uninstall(const std::wstring& fullInfPath, bool* rebootRequired);
 
-    std::expected<bool, nefarius::util::Win32Error> find_by_hwid(const std::wstring& matchstring);
+    std::expected<std::vector<FindByHwIdResult>, nefarius::util::Win32Error> find_by_hwid(const std::wstring& matchstring);
 };

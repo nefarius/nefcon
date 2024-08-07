@@ -3,6 +3,8 @@
 // ReSharper disable CppClangTidyHicppAvoidGoto
 #include "NefConUtil.h"
 
+#include <numeric>
+
 using namespace colorwin;
 
 INITIALIZE_EASYLOGGINGPP
@@ -738,10 +740,39 @@ int main(int argc, char* argv[])
             std::cout << color(red) << "Hardware ID missing" << std::endl;
             return EXIT_FAILURE;
         }
-        if (!devcon::find_by_hwid(ConvertAnsiToWide(hwId)))
+
+        const auto findResult = devcon::find_by_hwid(ConvertAnsiToWide(hwId));
+
+        if (!findResult)
+        {
+            // TODO: better error handling!
+            return findResult.error().getErrorCode();
+        }
+
+        if (findResult.value().empty())
         {
             return ERROR_NOT_FOUND;
         }
+
+        for (const devcon::FindByHwIdResult& item : findResult.value())
+        {
+            std::wstring idValue = std::accumulate(
+                std::begin(item.HardwareIds), std::end(item.HardwareIds), std::wstring(),
+                [](const std::wstring& ss, const std::wstring& s)
+                {
+                    return ss.empty() ? s : ss + L", " + s;
+                });
+
+            logger->info("Hardware IDs: %v", idValue);
+            logger->info("Name: %v", item.Name);
+            logger->info("Version: %v.%v.%v.%v",
+                         std::to_wstring(item.Version.Major),
+                         std::to_wstring(item.Version.Minor),
+                         std::to_wstring(item.Version.Build),
+                         std::to_wstring(item.Version.Private)
+            );
+        }
+
         return EXIT_SUCCESS;
     }
 
