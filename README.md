@@ -76,3 +76,5 @@ This project uses the following 3rd party resources:
 - [Convenient high-level C++ wrappers around Windows Registry Win32 APIs](https://github.com/GiovanniDicanio/WinReg)
 - [Single header C++ logging library](https://github.com/amrayn/easyloggingpp)
 - [Microsoft Detours](https://github.com/microsoft/Detours)
+- [A modern C++ scope guard that is easy to use but hard to misuse](https://github.com/ricab/scope_guard)
+- [Windows Implementation Libraries (WIL)](https://github.com/microsoft/wil)
