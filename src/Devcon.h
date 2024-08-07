@@ -87,7 +87,7 @@ namespace devcon
 
     std::expected<void, nefarius::util::Win32Error> inf_default_install(const std::wstring& fullInfPath, bool* rebootRequired);
 
-    bool inf_default_uninstall(const std::wstring& fullInfPath, bool* rebootRequired);
+    std::expected<void, nefarius::util::Win32Error> inf_default_uninstall(const std::wstring& fullInfPath, bool* rebootRequired);
 
     bool find_by_hwid(const std::wstring& matchstring);
 };

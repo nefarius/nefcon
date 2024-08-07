@@ -1013,6 +1013,11 @@ std::expected<void, Win32Error> devcon::inf_default_install(
             return std::unexpected(Win32Error("StringCchPrintfW"));
         }
 
+        //
+        // Some implementations are bugged and do not respect the non-interactive flags,
+        // so we catch the use of common dialog APIs and nullify their impact :)
+        // 
+
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
         DetourAttach((void**)&real_MessageBoxW, DetourMessageBoxW);
@@ -1061,7 +1066,7 @@ std::expected<void, Win32Error> devcon::inf_default_install(
     switch (newdev.CallFunction(
         newdev.fpDiInstallDriverW,
         nullptr,
-        fullInfPath.c_str(),
+        normalisedInfPath,
         0,
         &reboot
     ))
@@ -1082,86 +1087,90 @@ std::expected<void, Win32Error> devcon::inf_default_install(
     return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
 }
 
-bool devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* rebootRequired)
+std::expected<void, Win32Error> devcon::inf_default_uninstall(const std::wstring& fullInfPath, bool* rebootRequired)
 {
-    el::Logger* logger = el::Loggers::getLogger("default");
-    uint32_t errCode = ERROR_SUCCESS;
     SYSTEM_INFO sysInfo;
-    auto hInf = INVALID_HANDLE_VALUE;
-    WCHAR InfSectionWithExt[255];
-    WCHAR pszDest[280];
+    WCHAR InfSectionWithExt[LINE_LEN] = {};
+    constexpr int maxCmdLine = 280;
+    WCHAR pszDest[maxCmdLine] = {};
 
     GetNativeSystemInfo(&sysInfo);
 
-    hInf = SetupOpenInfFileW(fullInfPath.c_str(), nullptr, INF_STYLE_WIN4, nullptr);
+    WCHAR normalisedInfPath[MAX_PATH] = {};
 
-    do
+    const auto ret = GetFullPathNameW(fullInfPath.c_str(), MAX_PATH, normalisedInfPath, NULL);
+
+    if ((ret >= MAX_PATH) || (ret == FALSE))
     {
-        if (hInf == INVALID_HANDLE_VALUE)
-        {
-            errCode = GetLastError();
-            logger->error("SetupOpenInfFileW failed with error code %v", errCode);
-            break;
-        }
-
-        if (SetupDiGetActualSectionToInstallW(
-                hInf,
-                L"DefaultUninstall",
-                InfSectionWithExt,
-                0xFFu,
-                reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
-                nullptr)
-            && SetupFindFirstLineW(hInf, InfSectionWithExt, nullptr,
-                                   reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
-        {
-            if (StringCchPrintfW(pszDest, 280ui64, L"DefaultUninstall 132 %ws", fullInfPath.c_str()) < 0)
-            {
-                errCode = GetLastError();
-                logger->error("StringCchPrintfW failed with error code %v", errCode);
-                break;
-            }
-
-            logger->verbose(1, "Calling InstallHinfSectionW");
-
-            g_RestartDialogExCalled = FALSE;
-
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-            DetourAttach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
-            DetourTransactionCommit();
-
-            InstallHinfSectionW(nullptr, nullptr, pszDest, 0);
-
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-            DetourDetach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
-            DetourTransactionCommit();
-
-            logger->verbose(1, "InstallHinfSectionW finished");
-
-            if (rebootRequired)
-            {
-                *rebootRequired = g_RestartDialogExCalled;
-                logger->verbose(1, "Set rebootRequired to: %v", *rebootRequired);
-            }
-        }
-        else
-        {
-            logger->error("No DefaultUninstall section found");
-            errCode = ERROR_SECTION_NOT_FOUND;
-        }
-    }
-    while (FALSE);
-
-    if (hInf != INVALID_HANDLE_VALUE)
-    {
-        SetupCloseInfFile(hInf);
+        return std::unexpected(Win32Error(ERROR_BAD_PATHNAME));
     }
 
-    logger->verbose(1, "Returning with error code %v", errCode);
+    HINF hInf = SetupOpenInfFileW(normalisedInfPath, nullptr, INF_STYLE_WIN4, nullptr);
 
-    SetLastError(errCode);
-    return errCode == ERROR_SUCCESS;
+    const auto guard = sg::make_scope_guard([hInf]() noexcept
+    {
+        if (hInf != INVALID_HANDLE_VALUE)
+        {
+            SetupCloseInfFile(hInf);
+        }
+    });
+
+    if (hInf == INVALID_HANDLE_VALUE)
+    {
+        return std::unexpected(Win32Error());
+    }
+
+    if (SetupDiGetActualSectionToInstallW(
+            hInf,
+            L"DefaultUninstall",
+            InfSectionWithExt,
+            LINE_LEN,
+            reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
+            nullptr)
+        && SetupFindFirstLineW(
+            hInf,
+            InfSectionWithExt,
+            nullptr,
+            reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)
+        ))
+    {
+        if (StringCchPrintfW(pszDest, 280ui64, L"DefaultUninstall 132 %ws", normalisedInfPath) < 0)
+        {
+            return std::unexpected(Win32Error("StringCchPrintfW"));
+        }
+
+        g_RestartDialogExCalled = FALSE;
+
+        //
+        // Some implementations are bugged and do not respect the non-interactive flags,
+        // so we catch the use of common dialog APIs and nullify their impact :)
+        // 
+
+        DetourTransactionBegin();
+        DetourUpdateThread(GetCurrentThread());
+        DetourAttach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
+        DetourTransactionCommit();
+
+        InstallHinfSectionW(nullptr, nullptr, pszDest, 0);
+
+        DetourTransactionBegin();
+        DetourUpdateThread(GetCurrentThread());
+        DetourDetach((void**)&real_RestartDialogEx, DetourRestartDialogEx);
+        DetourTransactionCommit();
+
+        if (rebootRequired)
+        {
+            *rebootRequired = g_RestartDialogExCalled;
+        }
+
+        return {};
+    }
+    else
+    {
+        return std::unexpected(Win32Error(ERROR_SECTION_NOT_FOUND));
+    }
+
+    return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
 }
 
 bool devcon::find_by_hwid(const std::wstring& matchstring)
