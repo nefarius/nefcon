@@ -1320,6 +1320,8 @@ cleanup_DeviceInfo:
 }
 
 
+#pragma region Hooks trampoline functions
+
 //
 // Hooks MessageBoxW which is called if an error occurred, even when instructed to suppress any UI interaction
 // 
@@ -1375,3 +1377,5 @@ int DetourRestartDialogEx(
 
     return IDCANCEL; // equivalent to the user clicking "Restart Later"
 }
+
+#pragma endregion
