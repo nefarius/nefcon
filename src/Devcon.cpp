@@ -803,6 +803,9 @@ inline std::expected<void, Win32Error> uninstall_device_and_driver(
 
     const auto driverGuard = sg::make_scope_guard([hDevInfo, spDevInfoData]() noexcept
     {
+        //
+        // SetupDiGetDriverInfoDetail allocated memory we need to explicitly free again
+        // 
         SetupDiDestroyDriverInfoList(
             hDevInfo,
             spDevInfoData,
