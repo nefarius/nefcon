@@ -45,6 +45,8 @@
 
 using namespace nefarius::util;
 
+#pragma region Hooking
+
 static decltype(MessageBoxW)* real_MessageBoxW = MessageBoxW;
 
 int DetourMessageBoxW(
@@ -66,6 +68,8 @@ int DetourRestartDialogEx(
 );
 
 static BOOL g_RestartDialogExCalled = FALSE;
+
+#pragma endregion
 
 
 // Helper function to build a multi-string from a vector<wstring>
@@ -170,17 +174,9 @@ static std::expected<wil::unique_hlocal_ptr<PBYTE>, Win32Error> GetDeviceRegistr
 std::expected<void, Win32Error> devcon::create(const std::wstring& className, const GUID* classGuid,
                                                const WideMultiStringArray& hardwareId)
 {
-    const HDEVINFO deviceInfoSet = SetupDiCreateDeviceInfoList(classGuid, nullptr);
+    HDEVINFOHandleGuard deviceInfoSet(SetupDiCreateDeviceInfoList(classGuid, nullptr));
 
-    const auto guard = sg::make_scope_guard([deviceInfoSet]() noexcept
-    {
-        if (deviceInfoSet != INVALID_HANDLE_VALUE)
-        {
-            SetupDiDestroyDeviceInfoList(deviceInfoSet);
-        }
-    });
-
-    if (INVALID_HANDLE_VALUE == deviceInfoSet)
+    if (deviceInfoSet.is_invalid())
     {
         return std::unexpected(Win32Error(GetLastError(), "SetupDiCreateDeviceInfoList"));
     }
@@ -192,7 +188,7 @@ std::expected<void, Win32Error> devcon::create(const std::wstring& className, co
     // Create new device node
     // 
     if (!SetupDiCreateDeviceInfoW(
-        deviceInfoSet,
+        deviceInfoSet.get(),
         className.c_str(),
         classGuid,
         nullptr,
@@ -208,7 +204,7 @@ std::expected<void, Win32Error> devcon::create(const std::wstring& className, co
     // Add the HardwareID to the Device's HardwareID property.
     //
     if (!SetupDiSetDeviceRegistryPropertyW(
-        deviceInfoSet,
+        deviceInfoSet.get(),
         &deviceInfoData,
         SPDRP_HARDWAREID,
         hardwareId.data(),
@@ -223,7 +219,7 @@ std::expected<void, Win32Error> devcon::create(const std::wstring& className, co
     //
     if (!SetupDiCallClassInstaller(
         DIF_REGISTERDEVICE,
-        deviceInfoSet,
+        deviceInfoSet.get(),
         &deviceInfoData
     ))
     {
@@ -278,36 +274,28 @@ std::expected<void, Win32Error> devcon::restart_bth_usb_device(int instance)
     bool found = false;
     SP_DEVINFO_DATA spDevInfoData;
 
-    HDEVINFO hDevInfo = SetupDiGetClassDevs(
+    HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
         &GUID_DEVCLASS_BLUETOOTH,
         nullptr,
         nullptr,
         DIGCF_PRESENT
-    );
+    ));
 
-    const auto guard = sg::make_scope_guard([hDevInfo]() noexcept
-    {
-        if (hDevInfo != INVALID_HANDLE_VALUE)
-        {
-            SetupDiDestroyDeviceInfoList(hDevInfo);
-        }
-    });
-
-    if (hDevInfo == INVALID_HANDLE_VALUE)
+    if (hDevInfo.is_invalid())
     {
         return std::unexpected(Win32Error(GetLastError(), "SetupDiGetClassDevs"));
     }
 
     spDevInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
 
-    if (!SetupDiEnumDeviceInfo(hDevInfo, instance, &spDevInfoData))
+    if (!SetupDiEnumDeviceInfo(hDevInfo.get(), instance, &spDevInfoData))
     {
         std::unexpected(Win32Error(GetLastError(), "SetupDiEnumDeviceInfo"));
     }
 
     DWORD bufferSize = 0;
     const auto enumeratorProperty = GetDeviceRegistryProperty(
-        hDevInfo,
+        hDevInfo.get(),
         &spDevInfoData,
         SPDRP_ENUMERATOR_NAME,
         NULL,
@@ -334,7 +322,7 @@ std::expected<void, Win32Error> devcon::restart_bth_usb_device(int instance)
     // if device found restart
     if (found)
     {
-        if (!SetupDiRestartDevices(hDevInfo, &spDevInfoData))
+        if (!SetupDiRestartDevices(hDevInfo.get(), &spDevInfoData))
         {
             std::unexpected(Win32Error(GetLastError(), "SetupDiRestartDevices"));
         }
@@ -350,34 +338,26 @@ std::expected<void, Win32Error> devcon::enable_disable_bth_usb_device(bool state
     bool found = false;
     SP_DEVINFO_DATA spDevInfoData;
 
-    HDEVINFO hDevInfo = SetupDiGetClassDevs(
+    HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
         &GUID_DEVCLASS_BLUETOOTH,
         nullptr,
         nullptr,
         DIGCF_PRESENT
-    );
+    ));
 
-    const auto guard = sg::make_scope_guard([hDevInfo]() noexcept
-    {
-        if (hDevInfo != INVALID_HANDLE_VALUE)
-        {
-            SetupDiDestroyDeviceInfoList(hDevInfo);
-        }
-    });
-
-    if (hDevInfo == INVALID_HANDLE_VALUE)
+    if (hDevInfo.is_invalid())
     {
         return std::unexpected(Win32Error(GetLastError(), "SetupDiGetClassDevs"));
     }
 
-    if (!SetupDiEnumDeviceInfo(hDevInfo, instance, &spDevInfoData))
+    if (!SetupDiEnumDeviceInfo(hDevInfo.get(), instance, &spDevInfoData))
     {
         return std::unexpected(Win32Error(GetLastError(), "SetupDiEnumDeviceInfo"));
     }
 
     DWORD bufferSize = 0;
     const auto enumeratorProperty = GetDeviceRegistryProperty(
-        hDevInfo,
+        hDevInfo.get(),
         &spDevInfoData,
         SPDRP_ENUMERATOR_NAME,
         NULL,
@@ -414,13 +394,13 @@ std::expected<void, Win32Error> devcon::enable_disable_bth_usb_device(bool state
         params.StateChange = (state) ? DICS_ENABLE : DICS_DISABLE;
 
         // setup proper parameters            
-        if (!SetupDiSetClassInstallParams(hDevInfo, &spDevInfoData, &params.ClassInstallHeader, sizeof(params)))
+        if (!SetupDiSetClassInstallParams(hDevInfo.get(), &spDevInfoData, &params.ClassInstallHeader, sizeof(params)))
         {
             return std::unexpected(Win32Error(GetLastError(), "SetupDiSetClassInstallParams"));
         }
 
         // use parameters
-        if (!SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, hDevInfo, &spDevInfoData))
+        if (!SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, hDevInfo.get(), &spDevInfoData))
         {
             return std::unexpected(Win32Error(GetLastError(), "SetupDiCallClassInstaller"));
         }

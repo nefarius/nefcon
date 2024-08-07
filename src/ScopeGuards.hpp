@@ -77,12 +77,12 @@ namespace nefarius::util
     class HDEVINFOHandleGuard
     {
     public:
-        // Constructor takes the HINF handle to manage
+        // Constructor takes the HDEVINFO handle to manage
         explicit HDEVINFOHandleGuard(HDEVINFO handle) : handle_(handle)
         {
         }
 
-        // Destructor releases the HINF resource
+        // Destructor releases the HDEVINFO resource
         ~HDEVINFOHandleGuard()
         {
             if (handle_ != INVALID_HANDLE_VALUE)
