@@ -93,6 +93,17 @@ namespace devcon
     std::expected<void, nefarius::util::Win32Error> install_driver(const std::wstring& fullInfPath,
                                                                    bool* rebootRequired);
 
+    /**
+     * Uninstalls a given driver.
+     *
+     * @author	Benjamin "Nefarius" Hoeglinger-Stelzer
+     * @date	07.08.2024
+     *
+     * @param 		  	fullInfPath   	Full pathname of the INF file.
+     * @param [in,out]	rebootRequired	If non-null, true if reboot required.
+     *
+     * @returns	A std::expected&lt;void,nefarius::util::Win32Error&gt;
+     */
     std::expected<void, nefarius::util::Win32Error> uninstall_driver(const std::wstring& fullInfPath,
                                                                      bool* rebootRequired);
 
