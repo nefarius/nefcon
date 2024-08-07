@@ -398,10 +398,9 @@ cleanup_DeviceInfo:
     return succeeded;
 }
 
-bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequired)
+std::expected<void, Win32Error> devcon::install_driver(const std::wstring& fullInfPath,
+                                                       bool* rebootRequired)
 {
-    el::Logger* logger = el::Loggers::getLogger("default");
-
     Newdev newdev;
     BOOL reboot;
 
@@ -414,26 +413,20 @@ bool devcon::install_driver(const std::wstring& fullInfPath, bool* rebootRequire
     ))
     {
     case FunctionCallResult::NotAvailable:
-        logger->error("Couldn't find DiInstallDriverW export");
-        SetLastError(ERROR_INVALID_FUNCTION);
-        return false;
+        return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
     case FunctionCallResult::Failure:
-        return false;
+        return std::unexpected(Win32Error(GetLastError()));
     case FunctionCallResult::Success:
         if (rebootRequired)
-        {
             *rebootRequired = reboot > 0;
-        }
-        return true;
+        return {};
     }
 
-    return false;
+    return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
 }
 
-bool devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequired)
+std::expected<void, Win32Error> devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequired)
 {
-    el::Logger* logger = el::Loggers::getLogger("default");
-
     Newdev newdev;
     BOOL reboot;
 
@@ -446,20 +439,16 @@ bool devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequi
     ))
     {
     case FunctionCallResult::NotAvailable:
-        logger->error("Couldn't find DiUninstallDriverW export");
-        SetLastError(ERROR_INVALID_FUNCTION);
-        return false;
+        return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
     case FunctionCallResult::Failure:
-        return false;
+        return std::unexpected(Win32Error(GetLastError()));
     case FunctionCallResult::Success:
         if (rebootRequired)
-        {
             *rebootRequired = reboot > 0;
-        }
-        return true;
+        return {};
     }
 
-    return false;
+    return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
 }
 
 bool devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& filterName,

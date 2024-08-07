@@ -59,9 +59,9 @@ namespace devcon
 
     bool enable_disable_bth_usb_device(bool state);
 
-    bool install_driver(const std::wstring& fullInfPath, bool* rebootRequired);
+    std::expected<void, nefarius::util::Win32Error> install_driver(const std::wstring& fullInfPath, bool* rebootRequired);
 
-    bool uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequired);
+    std::expected<void, nefarius::util::Win32Error> uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequired);
 
     bool add_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
                                  DeviceClassFilterPosition position);
