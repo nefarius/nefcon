@@ -59,6 +59,17 @@ namespace devcon
 
     std::expected<void, nefarius::util::Win32Error> enable_disable_bth_usb_device(bool state, int instance = 0);
 
+    /**
+     * Installs a given driver into the driver store.
+     *
+     * @author	Benjamin "Nefarius" Hoeglinger-Stelzer
+     * @date	07.08.2024
+     *
+     * @param 		  	fullInfPath   	Full pathname of the INF file.
+     * @param [in,out]	rebootRequired	If non-null, true if reboot required.
+     *
+     * @returns	A std::expected&lt;void,nefarius::util::Win32Error&gt;
+     */
     std::expected<void, nefarius::util::Win32Error> install_driver(const std::wstring& fullInfPath,
                                                                    bool* rebootRequired);
 

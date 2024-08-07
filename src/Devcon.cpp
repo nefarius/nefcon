@@ -238,6 +238,14 @@ std::expected<void, Win32Error> devcon::update(const std::wstring& hardwareId, c
     Newdev newdev;
     DWORD flags = 0;
     BOOL reboot = FALSE;
+    WCHAR normalisedInfPath[MAX_PATH] = {};
+
+    const auto ret = GetFullPathNameW(fullInfPath.c_str(), MAX_PATH, normalisedInfPath, NULL);
+
+    if ((ret >= MAX_PATH) || (ret == FALSE))
+    {
+        return std::unexpected(Win32Error(ERROR_BAD_PATHNAME));
+    }
 
     if (force)
         flags |= INSTALLFLAG_FORCE;
@@ -246,7 +254,7 @@ std::expected<void, Win32Error> devcon::update(const std::wstring& hardwareId, c
         newdev.fpUpdateDriverForPlugAndPlayDevicesW,
         nullptr,
         hardwareId.c_str(),
-        fullInfPath.c_str(),
+        normalisedInfPath,
         flags,
         &reboot
     ))
@@ -427,11 +435,19 @@ std::expected<void, Win32Error> devcon::install_driver(const std::wstring& fullI
 {
     Newdev newdev;
     BOOL reboot;
+    WCHAR normalisedInfPath[MAX_PATH] = {};
+
+    const auto ret = GetFullPathNameW(fullInfPath.c_str(), MAX_PATH, normalisedInfPath, NULL);
+
+    if ((ret >= MAX_PATH) || (ret == FALSE))
+    {
+        return std::unexpected(Win32Error(ERROR_BAD_PATHNAME));
+    }
 
     switch (newdev.CallFunction(
         newdev.fpDiInstallDriverW,
         nullptr,
-        fullInfPath.c_str(),
+        normalisedInfPath,
         DIIRFLAG_FORCE_INF,
         &reboot
     ))
@@ -453,11 +469,19 @@ std::expected<void, Win32Error> devcon::uninstall_driver(const std::wstring& ful
 {
     Newdev newdev;
     BOOL reboot;
+    WCHAR normalisedInfPath[MAX_PATH] = {};
+
+    const auto ret = GetFullPathNameW(fullInfPath.c_str(), MAX_PATH, normalisedInfPath, NULL);
+
+    if ((ret >= MAX_PATH) || (ret == FALSE))
+    {
+        return std::unexpected(Win32Error(ERROR_BAD_PATHNAME));
+    }
 
     switch (newdev.CallFunction(
         newdev.fpDiUninstallDriverW,
         nullptr,
-        fullInfPath.c_str(),
+        normalisedInfPath,
         0,
         &reboot
     ))
