@@ -41,6 +41,7 @@
 #include <wil/resource.h>
 
 #include "MultiStringArray.hpp"
+#include "ScopeGuards.hpp"
 
 using namespace nefarius::util;
 
@@ -974,17 +975,9 @@ std::expected<void, Win32Error> devcon::inf_default_install(
         return std::unexpected(Win32Error(ERROR_BAD_PATHNAME));
     }
 
-    const HINF hInf = SetupOpenInfFileW(normalisedInfPath, nullptr, INF_STYLE_WIN4, nullptr);
+    INFHandleGuard hInf(SetupOpenInfFileW(normalisedInfPath, nullptr, INF_STYLE_WIN4, nullptr));
 
-    const auto guard = sg::make_scope_guard([hInf]() noexcept
-    {
-        if (hInf != INVALID_HANDLE_VALUE)
-        {
-            SetupCloseInfFile(hInf);
-        }
-    });
-
-    if (hInf == INVALID_HANDLE_VALUE)
+    if (hInf.is_invalid())
     {
         return std::unexpected(Win32Error());
     }
@@ -993,14 +986,14 @@ std::expected<void, Win32Error> devcon::inf_default_install(
     // Try default section first, which is common to class filter driver, filesystem drivers and alike
     // 
     if (SetupDiGetActualSectionToInstallW(
-            hInf,
+            hInf.get(),
             L"DefaultInstall",
             InfSectionWithExt,
             LINE_LEN,
             reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
             nullptr)
         && SetupFindFirstLineW(
-            hInf,
+            hInf.get(),
             InfSectionWithExt,
             nullptr,
             reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)
@@ -1048,8 +1041,12 @@ std::expected<void, Win32Error> devcon::inf_default_install(
     //
     // If we have no Default, but a Manufacturer section we can attempt classic installation
     // 
-    if (!SetupFindFirstLineW(hInf, L"Manufacturer", nullptr,
-                             reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)))
+    if (!SetupFindFirstLineW(
+        hInf.get(),
+        L"Manufacturer",
+        nullptr,
+        reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)
+    ))
     {
         //
         // We need either one or the other, this INF appears to not be compatible with this install method
@@ -1105,30 +1102,22 @@ std::expected<void, Win32Error> devcon::inf_default_uninstall(const std::wstring
         return std::unexpected(Win32Error(ERROR_BAD_PATHNAME));
     }
 
-    const HINF hInf = SetupOpenInfFileW(normalisedInfPath, nullptr, INF_STYLE_WIN4, nullptr);
+    INFHandleGuard hInf(SetupOpenInfFileW(normalisedInfPath, nullptr, INF_STYLE_WIN4, nullptr));
 
-    const auto guard = sg::make_scope_guard([hInf]() noexcept
-    {
-        if (hInf != INVALID_HANDLE_VALUE)
-        {
-            SetupCloseInfFile(hInf);
-        }
-    });
-
-    if (hInf == INVALID_HANDLE_VALUE)
+    if (hInf.is_invalid())
     {
         return std::unexpected(Win32Error());
     }
 
     if (SetupDiGetActualSectionToInstallW(
-            hInf,
+            hInf.get(),
             L"DefaultUninstall",
             InfSectionWithExt,
             LINE_LEN,
             reinterpret_cast<PDWORD>(&sysInfo.lpMinimumApplicationAddress),
             nullptr)
         && SetupFindFirstLineW(
-            hInf,
+            hInf.get(),
             InfSectionWithExt,
             nullptr,
             reinterpret_cast<PINFCONTEXT>(&sysInfo.lpMaximumApplicationAddress)
@@ -1165,12 +1154,8 @@ std::expected<void, Win32Error> devcon::inf_default_uninstall(const std::wstring
 
         return {};
     }
-    else
-    {
-        return std::unexpected(Win32Error(ERROR_SECTION_NOT_FOUND));
-    }
 
-    return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
+    return std::unexpected(Win32Error(ERROR_SECTION_NOT_FOUND));
 }
 
 bool devcon::find_by_hwid(const std::wstring& matchstring)

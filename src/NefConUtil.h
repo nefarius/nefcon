@@ -50,3 +50,4 @@
 #include "Devcon.h"
 #include "NefConSetup.h"
 #include "UniUtil.h"
+#include "ScopeGuards.hpp"
