@@ -106,6 +106,61 @@ inline std::vector<wchar_t> BuildMultiString(const std::vector<std::wstring>& da
     return multiString;
 }
 
+static std::expected<PBYTE, Win32Error> GetDeviceRegistryProperty(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _In_ DWORD Property,
+    _Out_opt_ PDWORD PropertyRegDataType,
+    _Out_opt_ PDWORD BufferSize
+)
+{
+    DWORD sizeRequired = 0;
+    PBYTE buffer = NULL;
+
+    //
+    // Query required size
+    // 
+    (void)SetupDiGetDeviceRegistryProperty(DeviceInfoSet,
+                                           DeviceInfoData,
+                                           Property,
+                                           PropertyRegDataType,
+                                           buffer,
+                                           0,
+                                           &sizeRequired);
+
+    DWORD win32Error = GetLastError();
+
+    if (win32Error == ERROR_INSUFFICIENT_BUFFER)
+    {
+        buffer = (PBYTE)LocalAlloc(LPTR, sizeRequired);
+    }
+    else
+    {
+        return std::unexpected(Win32Error(win32Error, "SetupDiGetDeviceRegistryProperty"));
+    }
+
+    //
+    // Query property value
+    // 
+    if (!SetupDiGetDeviceRegistryProperty(DeviceInfoSet,
+                                          DeviceInfoData,
+                                          Property,
+                                          PropertyRegDataType,
+                                          buffer,
+                                          sizeRequired,
+                                          &sizeRequired))
+    {
+        win32Error = GetLastError();
+        LocalFree(buffer);
+        return std::unexpected(Win32Error(win32Error, "SetupDiGetDeviceRegistryProperty"));
+    }
+
+    if (BufferSize)
+        *BufferSize = sizeRequired;
+
+    return buffer;
+}
+
 std::expected<void, Win32Error> devcon::create(const std::wstring& className, const GUID* classGuid,
                                                const WideMultiStringArray& hardwareId)
 {
