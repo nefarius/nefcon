@@ -112,7 +112,7 @@ inline std::vector<wchar_t> BuildMultiString(const std::vector<std::wstring>& da
     return multiString;
 }
 
-static std::expected<wil::unique_hlocal_ptr<PBYTE>, Win32Error> GetDeviceRegistryProperty(
+static std::expected<wil::unique_hlocal_ptr<uint8_t[]>, Win32Error> GetDeviceRegistryProperty(
     _In_ HDEVINFO DeviceInfoSet,
     _In_ PSP_DEVINFO_DATA DeviceInfoData,
     _In_ DWORD Property,
@@ -121,7 +121,6 @@ static std::expected<wil::unique_hlocal_ptr<PBYTE>, Win32Error> GetDeviceRegistr
 )
 {
     DWORD sizeRequired = 0;
-    PBYTE buffer = NULL;
 
     //
     // Query required size
@@ -130,24 +129,29 @@ static std::expected<wil::unique_hlocal_ptr<PBYTE>, Win32Error> GetDeviceRegistr
                                            DeviceInfoData,
                                            Property,
                                            PropertyRegDataType,
-                                           buffer,
+                                           NULL,
                                            0,
                                            &sizeRequired);
 
     DWORD win32Error = GetLastError();
 
-    if (win32Error == ERROR_INSUFFICIENT_BUFFER)
-    {
-        buffer = (PBYTE)LocalAlloc(LPTR, sizeRequired);
-    }
-    else if (win32Error == ERROR_INVALID_DATA)
+    //
+    // Property doesn't exist
+    // 
+    if (win32Error == ERROR_INVALID_DATA)
     {
         return std::unexpected(Win32Error(ERROR_NOT_FOUND, "SetupDiGetDeviceRegistryProperty"));
     }
-    else
+
+    //
+    // Unexpected status other than required size
+    // 
+    if (win32Error != ERROR_INSUFFICIENT_BUFFER)
     {
         return std::unexpected(Win32Error(win32Error, "SetupDiGetDeviceRegistryProperty"));
     }
+
+    auto buffer = wil::make_unique_hlocal_nothrow<uint8_t[]>(sizeRequired);
 
     //
     // Query property value
@@ -156,19 +160,19 @@ static std::expected<wil::unique_hlocal_ptr<PBYTE>, Win32Error> GetDeviceRegistr
                                           DeviceInfoData,
                                           Property,
                                           PropertyRegDataType,
-                                          buffer,
+                                          buffer.get(),
                                           sizeRequired,
                                           &sizeRequired))
     {
         win32Error = GetLastError();
-        LocalFree(buffer);
+        buffer.release();
         return std::unexpected(Win32Error(win32Error, "SetupDiGetDeviceRegistryProperty"));
     }
 
     if (BufferSize)
         *BufferSize = sizeRequired;
 
-    return wil::make_unique_hlocal<PBYTE>(buffer);
+    return buffer;
 }
 
 std::expected<void, Win32Error> devcon::create(const std::wstring& className, const GUID* classGuid,
@@ -1138,7 +1142,7 @@ std::expected<bool, Win32Error> devcon::find_by_hwid(const std::wstring& matchst
 {
     el::Logger* logger = el::Loggers::getLogger("default");
     bool found = FALSE;
-    DWORD err, total = 0;
+    DWORD total = 0;
     SP_DEVINFO_DATA spDevInfoData;
 
     HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
@@ -1259,7 +1263,7 @@ std::expected<bool, Win32Error> devcon::find_by_hwid(const std::wstring& matchst
             });
 
             // Get the first info item for this driver
-            SP_DRVINFO_DATA drvInfo;
+            SP_DRVINFO_DATA drvInfo = {};
             drvInfo.cbSize = sizeof(SP_DRVINFO_DATA);
 
             if (!SetupDiEnumDriverInfo(hDevInfo.get(), &spDevInfoData, SPDIT_COMPATDRIVER, 0, &drvInfo))
