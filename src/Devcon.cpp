@@ -705,167 +705,142 @@ bool devcon::remove_device_class_filter(const GUID* classGuid, const std::wstrin
     return false;
 }
 
-inline bool uninstall_device_and_driver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDevInfoData, bool* rebootRequired)
+inline std::expected<void, Win32Error> uninstall_device_and_driver(
+    HDEVINFO hDevInfo, PSP_DEVINFO_DATA spDevInfoData, bool* rebootRequired)
 {
-    el::Logger* logger = el::Loggers::getLogger("default");
     BOOL drvNeedsReboot = FALSE, devNeedsReboot = FALSE;
     DWORD requiredBufferSize = 0;
-    DWORD err = ERROR_SUCCESS;
-    bool ret = false;
-
     Newdev newdev;
 
     if (!newdev.fpDiUninstallDevice || !newdev.fpDiUninstallDriverW)
     {
-        logger->error("Couldn't get DiUninstallDevice or DiUninstallDriverW function exports");
-        SetLastError(ERROR_INVALID_FUNCTION);
-        return false;
+        return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
     }
 
     SP_DRVINFO_DATA_W drvInfoData;
     drvInfoData.cbSize = sizeof(drvInfoData);
 
-    PSP_DRVINFO_DETAIL_DATA_W pDrvInfoDetailData = nullptr;
-
-    do
-    {
-        logger->verbose(1, "Enumerating");
-
-        //
-        // Start building driver info
-        // 
-        if (!SetupDiBuildDriverInfoList(
-            hDevInfo,
-            spDevInfoData,
-            SPDIT_COMPATDRIVER
-        ))
-        {
-            err = GetLastError();
-            logger->error("SetupDiBuildDriverInfoList failed, error code: %v", err);
-            break;
-        }
-
-        if (!SetupDiEnumDriverInfo(
-            hDevInfo,
-            spDevInfoData,
-            SPDIT_COMPATDRIVER,
-            0, // One result expected
-            &drvInfoData
-        ))
-        {
-            err = GetLastError();
-            logger->error("SetupDiEnumDriverInfo failed, error code: %v", err);
-            break;
-        }
-
-        //
-        // Details will contain the INF path to driver store copy
-        // 
-        SP_DRVINFO_DETAIL_DATA_W drvInfoDetailData;
-        drvInfoDetailData.cbSize = sizeof(drvInfoDetailData);
-
-        //
-        // Request required buffer size
-        // 
-        (void)SetupDiGetDriverInfoDetail(
-            hDevInfo,
-            spDevInfoData,
-            &drvInfoData,
-            &drvInfoDetailData,
-            drvInfoDetailData.cbSize,
-            &requiredBufferSize
-        );
-
-        if (requiredBufferSize == 0)
-        {
-            err = GetLastError();
-            logger->error("SetupDiGetDriverInfoDetail (size) failed, error code: %v", err);
-            break;
-        }
-
-        //
-        // Allocate required amount
-        // 
-        pDrvInfoDetailData = static_cast<PSP_DRVINFO_DETAIL_DATA_W>(malloc(requiredBufferSize));
-
-        if (pDrvInfoDetailData == nullptr)
-        {
-            logger->error("Out of memory");
-            err = ERROR_INSUFFICIENT_BUFFER;
-            break;
-        }
-
-        pDrvInfoDetailData->cbSize = sizeof(SP_DRVINFO_DETAIL_DATA_W);
-
-        //
-        // Query full driver details
-        // 
-        if (!SetupDiGetDriverInfoDetail(
-            hDevInfo,
-            spDevInfoData,
-            &drvInfoData,
-            pDrvInfoDetailData,
-            requiredBufferSize,
-            nullptr
-        ))
-        {
-            err = GetLastError();
-            logger->error("SetupDiGetDriverInfoDetail (payload) failed, error code: %v", err);
-            break;
-        }
-
-        //
-        // Remove device
-        // 
-        if (!newdev.fpDiUninstallDevice(
-            nullptr,
-            hDevInfo,
-            spDevInfoData,
-            0,
-            &devNeedsReboot
-        ))
-        {
-            err = GetLastError();
-            logger->error("DiUninstallDevice failed, error code: %v", err);
-            break;
-        }
-
-        //
-        // Uninstall from driver store
-        // 
-        if (!newdev.fpDiUninstallDriverW(
-            nullptr,
-            pDrvInfoDetailData->InfFileName,
-            0,
-            &drvNeedsReboot
-        ))
-        {
-            err = GetLastError();
-            logger->error("DiUninstallDriverW failed, error code: %v", err);
-            break;
-        }
-
-        *rebootRequired = (drvNeedsReboot > 0) || (devNeedsReboot > 0);
-        ret = true;
-
-        logger->verbose(1, "Reboot required: %v", *rebootRequired);
-    }
-    while (FALSE);
-
-    if (pDrvInfoDetailData)
-        free(pDrvInfoDetailData);
-
-    (void)SetupDiDestroyDriverInfoList(
+    //
+    // Start building driver info
+    // 
+    if (!SetupDiBuildDriverInfoList(
         hDevInfo,
         spDevInfoData,
         SPDIT_COMPATDRIVER
+    ))
+    {
+        return std::unexpected(Win32Error("SetupDiBuildDriverInfoList"));
+    }
+
+    if (!SetupDiEnumDriverInfo(
+        hDevInfo,
+        spDevInfoData,
+        SPDIT_COMPATDRIVER,
+        0, // One result expected
+        &drvInfoData
+    ))
+    {
+        return std::unexpected(Win32Error("SetupDiEnumDriverInfo"));
+    }
+
+    //
+    // Details will contain the INF path to driver store copy
+    // 
+    SP_DRVINFO_DETAIL_DATA_W drvInfoDetailData;
+    drvInfoDetailData.cbSize = sizeof(drvInfoDetailData);
+
+    //
+    // Request required buffer size
+    // 
+    (void)SetupDiGetDriverInfoDetail(
+        hDevInfo,
+        spDevInfoData,
+        &drvInfoData,
+        &drvInfoDetailData,
+        drvInfoDetailData.cbSize,
+        &requiredBufferSize
     );
 
-    SetLastError(err);
+    if (requiredBufferSize == 0)
+    {
+        return std::unexpected(Win32Error("SetupDiGetDriverInfoDetail"));
+    }
 
-    logger->verbose(1, "Freed memory, returning with %v and error code %v", ret, err);
+    //
+    // Allocate required amount
+    // 
+    PSP_DRVINFO_DETAIL_DATA_W pDrvInfoDetailData = static_cast<PSP_DRVINFO_DETAIL_DATA_W>(malloc(requiredBufferSize));
 
-    return ret;
+    const auto dataGuard = sg::make_scope_guard([pDrvInfoDetailData]() noexcept
+    {
+        if (pDrvInfoDetailData != nullptr)
+        {
+            free(pDrvInfoDetailData);
+        }
+    });
+
+    if (pDrvInfoDetailData == nullptr)
+    {
+        return std::unexpected(Win32Error(ERROR_INSUFFICIENT_BUFFER));
+    }
+
+    pDrvInfoDetailData->cbSize = sizeof(SP_DRVINFO_DETAIL_DATA_W);
+
+    //
+    // Query full driver details
+    // 
+    if (!SetupDiGetDriverInfoDetail(
+        hDevInfo,
+        spDevInfoData,
+        &drvInfoData,
+        pDrvInfoDetailData,
+        requiredBufferSize,
+        nullptr
+    ))
+    {
+        return std::unexpected(Win32Error("SetupDiGetDriverInfoDetail"));
+    }
+
+    const auto driverGuard = sg::make_scope_guard([hDevInfo, spDevInfoData]() noexcept
+    {
+        SetupDiDestroyDriverInfoList(
+            hDevInfo,
+            spDevInfoData,
+            SPDIT_COMPATDRIVER
+        );
+    });
+
+    //
+    // Remove device
+    // 
+    if (!newdev.fpDiUninstallDevice(
+        nullptr,
+        hDevInfo,
+        spDevInfoData,
+        0,
+        &devNeedsReboot
+    ))
+    {
+        return std::unexpected(Win32Error("DiUninstallDevice"));
+    }
+
+    //
+    // Uninstall from driver store
+    // 
+    if (!newdev.fpDiUninstallDriverW(
+        nullptr,
+        pDrvInfoDetailData->InfFileName,
+        0,
+        &drvNeedsReboot
+    ))
+    {
+        return std::unexpected(Win32Error("DiUninstallDriverW"));
+    }
+
+    if (rebootRequired)
+        *rebootRequired = (drvNeedsReboot > 0) || (devNeedsReboot > 0);
+
+    return {};
 }
 
 static PWSTR wstristr(PCWSTR haystack, PCWSTR needle)
@@ -966,7 +941,7 @@ bool devcon::uninstall_device_and_driver(const GUID* classGuid, const std::wstri
             {
                 logger->verbose(1, "Found match against %v, attempting removal", hardwareId);
 
-                succeeded = ::uninstall_device_and_driver(hDevInfo, &spDevInfoData, rebootRequired);
+                succeeded = ::uninstall_device_and_driver(hDevInfo, &spDevInfoData, rebootRequired) ? true : false;
                 err = GetLastError();
                 logger->verbose(1, "Removal response: %v, error code: %v", succeeded, err);
                 break;

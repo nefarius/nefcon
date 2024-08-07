@@ -11,7 +11,13 @@ namespace nefarius::util
     class Win32Error
     {
     public:
-        explicit Win32Error(DWORD errorCode, std::string additionalMessage = "") : errorCode(errorCode),
+        explicit Win32Error(std::string additionalMessage) : errorCode(GetLastError()),
+                                                             additionalMessage(std::move(additionalMessage))
+        {
+        }
+
+        explicit Win32Error(DWORD errorCode = GetLastError(), std::string additionalMessage = "") :
+            errorCode(errorCode),
             additionalMessage(std::move(additionalMessage))
         {
         }
