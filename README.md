@@ -20,7 +20,8 @@ Windows Device Driver management is and always has been hard. The APIs involved 
 - Actively suppresses and works around user interaction inconsistencies ("reboot required" dialogs and OS-included bugs)
 - Offers optional logging to `stdout` or file
 - *Sane* command line arguments 😁
-- Class filter values manipulation
+- [Class filter](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/filter-drivers) values manipulation
+- Supports installation of [primitive drivers](https://learn.microsoft.com/en-us/windows-hardware/drivers/develop/creating-a-primitive-driver)
 
 ## Installation
 
