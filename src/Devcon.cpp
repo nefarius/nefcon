@@ -22,24 +22,18 @@
 #include <iomanip>
 #include <numeric>
 
-
 //
-// Logging
+// Vcpkg Packages
 // 
-#include "easylogging++.h"
-
-//
-// Dynamic module helper
-// 
-#include "LibraryHelper.hpp"
-
-//
-// Packages
-// 
+#include <easylogging++.h>
 #include <detours/detours.h>
 #include <scope_guard.hpp>
 #include <wil/resource.h>
 
+//
+// Internal
+// 
+#include "LibraryHelper.hpp"
 #include "MultiStringArray.hpp"
 #include "ScopeGuards.hpp"
 
