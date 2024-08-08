@@ -33,11 +33,15 @@
 //
 // Internal
 // 
-#include "LibraryHelper.hpp"
-#include "MultiStringArray.hpp"
-#include "ScopeGuards.hpp"
+#include <nefarius/neflib/ClassFilter.hpp>
+#include <nefarius/neflib/HDEVINFOHandleGuard.hpp>
+#include <nefarius/neflib/HKEYHandleGuard.hpp>
+#include <nefarius/neflib/INFHandleGuard.hpp>
+#include <nefarius/neflib/MultiStringArray.hpp>
 
-using namespace nefarius::util;
+#include "LibraryHelper.hpp"
+
+using namespace nefarius::utilities;
 
 #pragma region Hooking
 
@@ -172,7 +176,7 @@ static std::expected<wil::unique_hlocal_ptr<uint8_t[]>, Win32Error> GetDeviceReg
 std::expected<void, Win32Error> devcon::create(const std::wstring& className, const GUID* classGuid,
                                                const WideMultiStringArray& hardwareId)
 {
-    HDEVINFOHandleGuard hDevInfo(SetupDiCreateDeviceInfoList(classGuid, nullptr));
+    guards::HDEVINFOHandleGuard hDevInfo(SetupDiCreateDeviceInfoList(classGuid, nullptr));
 
     if (hDevInfo.is_invalid())
     {
@@ -230,7 +234,7 @@ std::expected<void, Win32Error> devcon::create(const std::wstring& className, co
 std::expected<void, Win32Error> devcon::update(const std::wstring& hardwareId, const std::wstring& fullInfPath,
                                                bool* rebootRequired, bool force)
 {
-    Newdev newdev;
+    nefarius::util::Newdev newdev;
     DWORD flags = 0;
     BOOL reboot = FALSE;
     WCHAR normalisedInfPath[MAX_PATH] = {};
@@ -254,11 +258,11 @@ std::expected<void, Win32Error> devcon::update(const std::wstring& hardwareId, c
         &reboot
     ))
     {
-    case FunctionCallResult::NotAvailable:
+    case nefarius::util::FunctionCallResult::NotAvailable:
         return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
-    case FunctionCallResult::Failure:
+    case nefarius::util::FunctionCallResult::Failure:
         return std::unexpected(Win32Error(GetLastError()));
-    case FunctionCallResult::Success:
+    case nefarius::util::FunctionCallResult::Success:
         if (rebootRequired)
             *rebootRequired = reboot > 0;
         return {};
@@ -272,7 +276,7 @@ std::expected<void, Win32Error> devcon::restart_bth_usb_device(int instance)
     bool found = false;
     SP_DEVINFO_DATA spDevInfoData;
 
-    HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
+    guards::HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
         &GUID_DEVCLASS_BLUETOOTH,
         nullptr,
         nullptr,
@@ -336,7 +340,7 @@ std::expected<void, Win32Error> devcon::enable_disable_bth_usb_device(bool state
     bool found = false;
     SP_DEVINFO_DATA spDevInfoData;
 
-    HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
+    guards::HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
         &GUID_DEVCLASS_BLUETOOTH,
         nullptr,
         nullptr,
@@ -412,7 +416,7 @@ std::expected<void, Win32Error> devcon::enable_disable_bth_usb_device(bool state
 std::expected<void, Win32Error> devcon::install_driver(const std::wstring& fullInfPath,
                                                        bool* rebootRequired)
 {
-    Newdev newdev;
+    nefarius::util::Newdev newdev;
     BOOL reboot;
     WCHAR normalisedInfPath[MAX_PATH] = {};
 
@@ -431,11 +435,11 @@ std::expected<void, Win32Error> devcon::install_driver(const std::wstring& fullI
         &reboot
     ))
     {
-    case FunctionCallResult::NotAvailable:
+    case nefarius::util::FunctionCallResult::NotAvailable:
         return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
-    case FunctionCallResult::Failure:
+    case nefarius::util::FunctionCallResult::Failure:
         return std::unexpected(Win32Error(GetLastError()));
-    case FunctionCallResult::Success:
+    case nefarius::util::FunctionCallResult::Success:
         if (rebootRequired)
             *rebootRequired = reboot > 0;
         return {};
@@ -446,7 +450,7 @@ std::expected<void, Win32Error> devcon::install_driver(const std::wstring& fullI
 
 std::expected<void, Win32Error> devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequired)
 {
-    Newdev newdev;
+    nefarius::util::Newdev newdev;
     BOOL reboot;
     WCHAR normalisedInfPath[MAX_PATH] = {};
 
@@ -465,215 +469,13 @@ std::expected<void, Win32Error> devcon::uninstall_driver(const std::wstring& ful
         &reboot
     ))
     {
-    case FunctionCallResult::NotAvailable:
+    case nefarius::util::FunctionCallResult::NotAvailable:
         return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
-    case FunctionCallResult::Failure:
+    case nefarius::util::FunctionCallResult::Failure:
         return std::unexpected(Win32Error(GetLastError()));
-    case FunctionCallResult::Success:
+    case nefarius::util::FunctionCallResult::Success:
         if (rebootRequired)
             *rebootRequired = reboot > 0;
-        return {};
-    }
-
-    return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
-}
-
-std::expected<void, Win32Error> devcon::add_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
-                                                                DeviceClassFilterPosition position)
-{
-    HKEYHandleGuard key(SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS));
-
-    if (key.is_invalid())
-    {
-        return std::unexpected(Win32Error("SetupDiOpenClassRegKey"));
-    }
-
-    LPCWSTR filterValue = (position == DeviceClassFilterPosition::Lower) ? L"LowerFilters" : L"UpperFilters";
-    DWORD type, size;
-    std::vector<std::wstring> filters;
-
-    auto status = RegQueryValueExW(
-        key.get(),
-        filterValue,
-        nullptr,
-        &type,
-        nullptr,
-        &size
-    );
-
-    //
-    // Value exists already, read it with returned buffer size
-    // 
-    if (status == ERROR_SUCCESS)
-    {
-        std::vector<wchar_t> temp(size / sizeof(wchar_t));
-
-        status = RegQueryValueExW(
-            key.get(),
-            filterValue,
-            nullptr,
-            &type,
-            reinterpret_cast<LPBYTE>(temp.data()),
-            &size
-        );
-
-        if (status != ERROR_SUCCESS)
-        {
-            return std::unexpected(Win32Error(status, "RegQueryValueExW"));
-        }
-
-        size_t index = 0;
-        size_t len = wcslen(temp.data());
-        while (len > 0)
-        {
-            filters.emplace_back(&temp[index]);
-            index += len + 1;
-            len = wcslen(&temp[index]);
-        }
-
-        //
-        // Filter not there yet, add
-        // 
-        if (std::ranges::find(filters, filterName) == filters.end())
-        {
-            filters.emplace_back(filterName);
-        }
-
-        const std::vector<wchar_t> multiString = BuildMultiString(filters);
-
-        const DWORD dataSize = static_cast<DWORD>(multiString.size() * sizeof(wchar_t));
-
-        status = RegSetValueExW(
-            key.get(),
-            filterValue,
-            0, // reserved
-            REG_MULTI_SZ,
-            reinterpret_cast<const BYTE*>(multiString.data()),
-            dataSize
-        );
-
-        if (status != ERROR_SUCCESS)
-        {
-            return std::unexpected(Win32Error(status, "RegSetValueExW"));
-        }
-
-        return {};
-    }
-    //
-    // Value doesn't exist, create and populate
-    // 
-    if (status == ERROR_FILE_NOT_FOUND)
-    {
-        filters.emplace_back(filterName);
-
-        const std::vector<wchar_t> multiString = BuildMultiString(filters);
-
-        const DWORD dataSize = static_cast<DWORD>(multiString.size() * sizeof(wchar_t));
-
-        status = RegSetValueExW(
-            key.get(),
-            filterValue,
-            0, // reserved
-            REG_MULTI_SZ,
-            reinterpret_cast<const BYTE*>(multiString.data()),
-            dataSize
-        );
-
-        if (status != ERROR_SUCCESS)
-        {
-            return std::unexpected(Win32Error(status, "RegSetValueExW"));
-        }
-
-        return {};
-    }
-
-    return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
-}
-
-std::expected<void, Win32Error> devcon::remove_device_class_filter(const GUID* classGuid, const std::wstring& filterName,
-                                        DeviceClassFilterPosition position)
-{
-    HKEYHandleGuard key(SetupDiOpenClassRegKey(classGuid, KEY_ALL_ACCESS));
-
-    if (key.is_invalid())
-    {
-        return std::unexpected(Win32Error("SetupDiOpenClassRegKey"));
-    }
-
-    LPCWSTR filterValue = (position == DeviceClassFilterPosition::Lower) ? L"LowerFilters" : L"UpperFilters";
-    DWORD type, size;
-
-    auto status = RegQueryValueExW(
-        key.get(),
-        filterValue,
-        nullptr,
-        &type,
-        nullptr,
-        &size
-    );
-
-    //
-    // Value exists already, read it with returned buffer size
-    // 
-    if (status == ERROR_SUCCESS)
-    {
-        std::vector<std::wstring> filters;
-        std::vector<wchar_t> temp(size / sizeof(wchar_t));
-
-        status = RegQueryValueExW(
-            key.get(),
-            filterValue,
-            nullptr,
-            &type,
-            reinterpret_cast<LPBYTE>(temp.data()),
-            &size
-        );
-
-        if (status != ERROR_SUCCESS)
-        {
-            return std::unexpected(Win32Error(status, "RegQueryValueExW"));
-        }
-
-        //
-        // Remove value, if found
-        //
-        size_t index = 0;
-        size_t len = wcslen(temp.data());
-        while (len > 0)
-        {
-            if (filterName != &temp[index])
-            {
-                filters.emplace_back(&temp[index]);
-            }
-            index += len + 1;
-            len = wcslen(&temp[index]);
-        }
-
-        const std::vector<wchar_t> multiString = BuildMultiString(filters);
-
-        const DWORD dataSize = static_cast<DWORD>(multiString.size() * sizeof(wchar_t));
-
-        status = RegSetValueExW(
-            key.get(),
-            filterValue,
-            0, // reserved
-            REG_MULTI_SZ,
-            reinterpret_cast<const BYTE*>(multiString.data()),
-            dataSize
-        );
-
-        if (status != ERROR_SUCCESS)
-        {
-            return std::unexpected(Win32Error(status, "RegSetValueExW"));
-        }
-
-        return {};
-    }
-    //
-    // Value doesn't exist, return
-    // 
-    if (status == ERROR_FILE_NOT_FOUND)
-    {
         return {};
     }
 
@@ -685,7 +487,7 @@ inline std::expected<void, Win32Error> uninstall_device_and_driver(
 {
     BOOL drvNeedsReboot = FALSE, devNeedsReboot = FALSE;
     DWORD requiredBufferSize = 0;
-    Newdev newdev;
+    nefarius::util::Newdev newdev;
 
     if (!newdev.fpDiUninstallDevice || !newdev.fpDiUninstallDriverW)
     {
@@ -848,7 +650,7 @@ std::vector<std::expected<void, Win32Error>> devcon::uninstall_device_and_driver
 
     SP_DEVINFO_DATA spDevInfoData;
 
-    HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
+    guards::HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
         classGuid,
         nullptr,
         nullptr,
@@ -924,7 +726,7 @@ std::expected<void, Win32Error> devcon::inf_default_install(
         return std::unexpected(Win32Error(ERROR_BAD_PATHNAME));
     }
 
-    INFHandleGuard hInf(SetupOpenInfFileW(normalisedInfPath, nullptr, INF_STYLE_WIN4, nullptr));
+    guards::INFHandleGuard hInf(SetupOpenInfFileW(normalisedInfPath, nullptr, INF_STYLE_WIN4, nullptr));
 
     if (hInf.is_invalid())
     {
@@ -1006,7 +808,7 @@ std::expected<void, Win32Error> devcon::inf_default_install(
         }
     }
 
-    Newdev newdev;
+    nefarius::util::Newdev newdev;
     BOOL reboot = FALSE;
 
     switch (newdev.CallFunction(
@@ -1017,11 +819,11 @@ std::expected<void, Win32Error> devcon::inf_default_install(
         &reboot
     ))
     {
-    case FunctionCallResult::NotAvailable:
+    case nefarius::util::FunctionCallResult::NotAvailable:
         return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
-    case FunctionCallResult::Failure:
+    case nefarius::util::FunctionCallResult::Failure:
         return std::unexpected(Win32Error());
-    case FunctionCallResult::Success:
+    case nefarius::util::FunctionCallResult::Success:
         if (rebootRequired)
         {
             *rebootRequired = reboot > FALSE || g_RestartDialogExCalled;
@@ -1051,7 +853,7 @@ std::expected<void, Win32Error> devcon::inf_default_uninstall(const std::wstring
         return std::unexpected(Win32Error(ERROR_BAD_PATHNAME));
     }
 
-    INFHandleGuard hInf(SetupOpenInfFileW(normalisedInfPath, nullptr, INF_STYLE_WIN4, nullptr));
+    guards::INFHandleGuard hInf(SetupOpenInfFileW(normalisedInfPath, nullptr, INF_STYLE_WIN4, nullptr));
 
     if (hInf.is_invalid())
     {
@@ -1115,7 +917,7 @@ std::expected<std::vector<devcon::FindByHwIdResult>, Win32Error> devcon::find_by
 
     std::vector<FindByHwIdResult> results;
 
-    HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
+    guards::HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
         nullptr,
         nullptr,
         nullptr,

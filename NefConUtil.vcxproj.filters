@@ -47,15 +47,6 @@
     <ClInclude Include=".\src\NefConSetup.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\MultiStringArray.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Win32Error.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ScopeGuards.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\ColorLogging.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>

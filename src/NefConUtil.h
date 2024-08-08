@@ -42,8 +42,14 @@
 //
 // Internal
 // 
-#include "MultiStringArray.hpp"
 #include "Devcon.h"
 #include "NefConSetup.h"
-#include "ScopeGuards.hpp"
 #include "ColorLogging.hpp"
+
+#include <nefarius/neflib/UniUtil.hpp>
+#include <nefarius/neflib/MultiStringArray.hpp>
+#include <nefarius/neflib/ClassFilter.hpp>
+#include <nefarius/neflib/Win32Error.hpp>
+#include <nefarius/neflib/HDEVINFOHandleGuard.hpp>
+#include <nefarius/neflib/HKEYHandleGuard.hpp>
+#include <nefarius/neflib/INFHandleGuard.hpp>

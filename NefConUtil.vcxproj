@@ -545,9 +545,6 @@
     <ClInclude Include=".\src\colorwin.hpp" />
     <ClInclude Include=".\src\resource.h" />
     <ClInclude Include="src\ColorLogging.hpp" />
-    <ClInclude Include="src\MultiStringArray.hpp" />
-    <ClInclude Include="src\ScopeGuards.hpp" />
-    <ClInclude Include="src\Win32Error.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include=".\src\NefConUtil.rc" />

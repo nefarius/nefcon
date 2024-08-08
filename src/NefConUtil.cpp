@@ -124,17 +124,17 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        devcon::DeviceClassFilterPosition pos;
+        nefarius::devcon::DeviceClassFilterPosition pos;
 
         if (position == "upper")
         {
             logger->verbose(1, "Modifying upper filters");
-            pos = devcon::DeviceClassFilterPosition::Upper;
+            pos = nefarius::devcon::DeviceClassFilterPosition::Upper;
         }
         else if (position == "lower")
         {
             logger->verbose(1, "Modifying lower filters");
-            pos = devcon::DeviceClassFilterPosition::Lower;
+            pos = nefarius::devcon::DeviceClassFilterPosition::Lower;
         }
         else
         {
@@ -142,7 +142,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = add_device_class_filter(&clID, nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
+        auto ret = AddDeviceClassFilter(&clID, nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
 
         if (ret)
         {
@@ -186,17 +186,17 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        devcon::DeviceClassFilterPosition pos;
+        nefarius::devcon::DeviceClassFilterPosition pos;
 
         if (position == "upper")
         {
             logger->verbose(1, "Modifying upper filters");
-            pos = devcon::DeviceClassFilterPosition::Upper;
+            pos = nefarius::devcon::DeviceClassFilterPosition::Upper;
         }
         else if (position == "lower")
         {
             logger->verbose(1, "Modifying lower filters");
-            pos = devcon::DeviceClassFilterPosition::Lower;
+            pos = nefarius::devcon::DeviceClassFilterPosition::Lower;
         }
         else
         {
@@ -204,7 +204,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = remove_device_class_filter(&clID, nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
+        auto ret = RemoveDeviceClassFilter(&clID, nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
 
         if (ret)
         {
@@ -407,7 +407,7 @@ int main(int argc, char* argv[])
         }
 
         auto ret = devcon::create(nefarius::utilities::ConvertAnsiToWide(className), &clID,
-                                  nefarius::util::WideMultiStringArray(nefarius::utilities::ConvertAnsiToWide(hwId)));
+                                  nefarius::utilities::WideMultiStringArray(nefarius::utilities::ConvertAnsiToWide(hwId)));
 
         if (!ret)
         {
