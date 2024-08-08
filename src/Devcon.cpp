@@ -37,9 +37,9 @@
 #include <nefarius/neflib/HDEVINFOHandleGuard.hpp>
 #include <nefarius/neflib/HKEYHandleGuard.hpp>
 #include <nefarius/neflib/INFHandleGuard.hpp>
+#include <nefarius/neflib/LibraryHelper.hpp>
 #include <nefarius/neflib/MultiStringArray.hpp>
 
-#include "LibraryHelper.hpp"
 
 using namespace nefarius::utilities;
 
@@ -234,7 +234,7 @@ std::expected<void, Win32Error> devcon::create(const std::wstring& className, co
 std::expected<void, Win32Error> devcon::update(const std::wstring& hardwareId, const std::wstring& fullInfPath,
                                                bool* rebootRequired, bool force)
 {
-    nefarius::util::Newdev newdev;
+    Newdev newdev;
     DWORD flags = 0;
     BOOL reboot = FALSE;
     WCHAR normalisedInfPath[MAX_PATH] = {};
@@ -258,11 +258,11 @@ std::expected<void, Win32Error> devcon::update(const std::wstring& hardwareId, c
         &reboot
     ))
     {
-    case nefarius::util::FunctionCallResult::NotAvailable:
+    case FunctionCallResult::NotAvailable:
         return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
-    case nefarius::util::FunctionCallResult::Failure:
+    case FunctionCallResult::Failure:
         return std::unexpected(Win32Error(GetLastError()));
-    case nefarius::util::FunctionCallResult::Success:
+    case FunctionCallResult::Success:
         if (rebootRequired)
             *rebootRequired = reboot > 0;
         return {};
@@ -416,7 +416,7 @@ std::expected<void, Win32Error> devcon::enable_disable_bth_usb_device(bool state
 std::expected<void, Win32Error> devcon::install_driver(const std::wstring& fullInfPath,
                                                        bool* rebootRequired)
 {
-    nefarius::util::Newdev newdev;
+    Newdev newdev;
     BOOL reboot;
     WCHAR normalisedInfPath[MAX_PATH] = {};
 
@@ -435,11 +435,11 @@ std::expected<void, Win32Error> devcon::install_driver(const std::wstring& fullI
         &reboot
     ))
     {
-    case nefarius::util::FunctionCallResult::NotAvailable:
+    case FunctionCallResult::NotAvailable:
         return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
-    case nefarius::util::FunctionCallResult::Failure:
+    case FunctionCallResult::Failure:
         return std::unexpected(Win32Error(GetLastError()));
-    case nefarius::util::FunctionCallResult::Success:
+    case FunctionCallResult::Success:
         if (rebootRequired)
             *rebootRequired = reboot > 0;
         return {};
@@ -450,7 +450,7 @@ std::expected<void, Win32Error> devcon::install_driver(const std::wstring& fullI
 
 std::expected<void, Win32Error> devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequired)
 {
-    nefarius::util::Newdev newdev;
+    Newdev newdev;
     BOOL reboot;
     WCHAR normalisedInfPath[MAX_PATH] = {};
 
@@ -469,11 +469,11 @@ std::expected<void, Win32Error> devcon::uninstall_driver(const std::wstring& ful
         &reboot
     ))
     {
-    case nefarius::util::FunctionCallResult::NotAvailable:
+    case FunctionCallResult::NotAvailable:
         return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
-    case nefarius::util::FunctionCallResult::Failure:
+    case FunctionCallResult::Failure:
         return std::unexpected(Win32Error(GetLastError()));
-    case nefarius::util::FunctionCallResult::Success:
+    case FunctionCallResult::Success:
         if (rebootRequired)
             *rebootRequired = reboot > 0;
         return {};
@@ -487,7 +487,7 @@ inline std::expected<void, Win32Error> uninstall_device_and_driver(
 {
     BOOL drvNeedsReboot = FALSE, devNeedsReboot = FALSE;
     DWORD requiredBufferSize = 0;
-    nefarius::util::Newdev newdev;
+    Newdev newdev;
 
     if (!newdev.fpDiUninstallDevice || !newdev.fpDiUninstallDriverW)
     {
@@ -808,7 +808,7 @@ std::expected<void, Win32Error> devcon::inf_default_install(
         }
     }
 
-    nefarius::util::Newdev newdev;
+    Newdev newdev;
     BOOL reboot = FALSE;
 
     switch (newdev.CallFunction(
@@ -819,11 +819,11 @@ std::expected<void, Win32Error> devcon::inf_default_install(
         &reboot
     ))
     {
-    case nefarius::util::FunctionCallResult::NotAvailable:
+    case FunctionCallResult::NotAvailable:
         return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
-    case nefarius::util::FunctionCallResult::Failure:
+    case FunctionCallResult::Failure:
         return std::unexpected(Win32Error());
-    case nefarius::util::FunctionCallResult::Success:
+    case FunctionCallResult::Success:
         if (rebootRequired)
         {
             *rebootRequired = reboot > FALSE || g_RestartDialogExCalled;

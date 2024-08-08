@@ -539,7 +539,6 @@
   <ItemGroup>
     <ClInclude Include=".\src\Devcon.h" />
     <ClInclude Include=".\src\framework.h" />
-    <ClInclude Include=".\src\LibraryHelper.hpp" />
     <ClInclude Include=".\src\NefConSetup.h" />
     <ClInclude Include=".\src\NefConUtil.h" />
     <ClInclude Include=".\src\colorwin.hpp" />

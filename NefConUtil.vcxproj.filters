@@ -41,9 +41,6 @@
     <ClInclude Include=".\src\framework.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include=".\src\LibraryHelper.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include=".\src\NefConSetup.h">
       <Filter>Header Files</Filter>
     </ClInclude>
