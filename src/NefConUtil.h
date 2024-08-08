@@ -54,3 +54,4 @@
 #include <nefarius/neflib/HKEYHandleGuard.hpp>
 #include <nefarius/neflib/INFHandleGuard.hpp>
 #include <nefarius/neflib/LibraryHelper.hpp>
+#include <nefarius/neflib/Devcon.hpp>

@@ -173,104 +173,6 @@ static std::expected<wil::unique_hlocal_ptr<uint8_t[]>, Win32Error> GetDeviceReg
     return buffer;
 }
 
-std::expected<void, Win32Error> devcon::create(const std::wstring& className, const GUID* classGuid,
-                                               const WideMultiStringArray& hardwareId)
-{
-    guards::HDEVINFOHandleGuard hDevInfo(SetupDiCreateDeviceInfoList(classGuid, nullptr));
-
-    if (hDevInfo.is_invalid())
-    {
-        return std::unexpected(Win32Error(GetLastError(), "SetupDiCreateDeviceInfoList"));
-    }
-
-    SP_DEVINFO_DATA deviceInfoData;
-    deviceInfoData.cbSize = sizeof(deviceInfoData);
-
-    //
-    // Create new device node
-    // 
-    if (!SetupDiCreateDeviceInfoW(
-        hDevInfo.get(),
-        className.c_str(),
-        classGuid,
-        nullptr,
-        nullptr,
-        DICD_GENERATE_ID,
-        &deviceInfoData
-    ))
-    {
-        return std::unexpected(Win32Error(GetLastError(), "SetupDiCreateDeviceInfoW"));
-    }
-
-    //
-    // Add the HardwareID to the Device's HardwareID property.
-    //
-    if (!SetupDiSetDeviceRegistryPropertyW(
-        hDevInfo.get(),
-        &deviceInfoData,
-        SPDRP_HARDWAREID,
-        hardwareId.data(),
-        static_cast<DWORD>(hardwareId.size())
-    ))
-    {
-        return std::unexpected(Win32Error(GetLastError(), "SetupDiSetDeviceRegistryPropertyW"));
-    }
-
-    //
-    // Transform the registry element into an actual device node in the PnP HW tree
-    //
-    if (!SetupDiCallClassInstaller(
-        DIF_REGISTERDEVICE,
-        hDevInfo.get(),
-        &deviceInfoData
-    ))
-    {
-        return std::unexpected(Win32Error(GetLastError(), "SetupDiCallClassInstaller"));
-    }
-
-    return {};
-}
-
-std::expected<void, Win32Error> devcon::update(const std::wstring& hardwareId, const std::wstring& fullInfPath,
-                                               bool* rebootRequired, bool force)
-{
-    Newdev newdev;
-    DWORD flags = 0;
-    BOOL reboot = FALSE;
-    WCHAR normalisedInfPath[MAX_PATH] = {};
-
-    const auto ret = GetFullPathNameW(fullInfPath.c_str(), MAX_PATH, normalisedInfPath, NULL);
-
-    if ((ret >= MAX_PATH) || (ret == FALSE))
-    {
-        return std::unexpected(Win32Error(ERROR_BAD_PATHNAME));
-    }
-
-    if (force)
-        flags |= INSTALLFLAG_FORCE;
-
-    switch (newdev.CallFunction(
-        newdev.fpUpdateDriverForPlugAndPlayDevicesW,
-        nullptr,
-        hardwareId.c_str(),
-        normalisedInfPath,
-        flags,
-        &reboot
-    ))
-    {
-    case FunctionCallResult::NotAvailable:
-        return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
-    case FunctionCallResult::Failure:
-        return std::unexpected(Win32Error(GetLastError()));
-    case FunctionCallResult::Success:
-        if (rebootRequired)
-            *rebootRequired = reboot > 0;
-        return {};
-    }
-
-    return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
-}
-
 std::expected<void, Win32Error> devcon::restart_bth_usb_device(int instance)
 {
     bool found = false;
@@ -411,75 +313,6 @@ std::expected<void, Win32Error> devcon::enable_disable_bth_usb_device(bool state
     }
 
     return std::unexpected(Win32Error(ERROR_NOT_FOUND));
-}
-
-std::expected<void, Win32Error> devcon::install_driver(const std::wstring& fullInfPath,
-                                                       bool* rebootRequired)
-{
-    Newdev newdev;
-    BOOL reboot;
-    WCHAR normalisedInfPath[MAX_PATH] = {};
-
-    const auto ret = GetFullPathNameW(fullInfPath.c_str(), MAX_PATH, normalisedInfPath, NULL);
-
-    if ((ret >= MAX_PATH) || (ret == FALSE))
-    {
-        return std::unexpected(Win32Error(ERROR_BAD_PATHNAME));
-    }
-
-    switch (newdev.CallFunction(
-        newdev.fpDiInstallDriverW,
-        nullptr,
-        normalisedInfPath,
-        DIIRFLAG_FORCE_INF,
-        &reboot
-    ))
-    {
-    case FunctionCallResult::NotAvailable:
-        return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
-    case FunctionCallResult::Failure:
-        return std::unexpected(Win32Error(GetLastError()));
-    case FunctionCallResult::Success:
-        if (rebootRequired)
-            *rebootRequired = reboot > 0;
-        return {};
-    }
-
-    return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
-}
-
-std::expected<void, Win32Error> devcon::uninstall_driver(const std::wstring& fullInfPath, bool* rebootRequired)
-{
-    Newdev newdev;
-    BOOL reboot;
-    WCHAR normalisedInfPath[MAX_PATH] = {};
-
-    const auto ret = GetFullPathNameW(fullInfPath.c_str(), MAX_PATH, normalisedInfPath, NULL);
-
-    if ((ret >= MAX_PATH) || (ret == FALSE))
-    {
-        return std::unexpected(Win32Error(ERROR_BAD_PATHNAME));
-    }
-
-    switch (newdev.CallFunction(
-        newdev.fpDiUninstallDriverW,
-        nullptr,
-        normalisedInfPath,
-        0,
-        &reboot
-    ))
-    {
-    case FunctionCallResult::NotAvailable:
-        return std::unexpected(Win32Error(ERROR_INVALID_FUNCTION));
-    case FunctionCallResult::Failure:
-        return std::unexpected(Win32Error(GetLastError()));
-    case FunctionCallResult::Success:
-        if (rebootRequired)
-            *rebootRequired = reboot > 0;
-        return {};
-    }
-
-    return std::unexpected(Win32Error(ERROR_INTERNAL_ERROR));
 }
 
 inline std::expected<void, Win32Error> uninstall_device_and_driver(
@@ -909,13 +742,13 @@ std::expected<void, Win32Error> devcon::inf_default_uninstall(const std::wstring
     return std::unexpected(Win32Error(ERROR_SECTION_NOT_FOUND));
 }
 
-std::expected<std::vector<devcon::FindByHwIdResult>, Win32Error> devcon::find_by_hwid(const std::wstring& matchstring)
+std::expected<std::vector<nefarius::devcon::FindByHwIdResult>, Win32Error> devcon::find_by_hwid(const std::wstring& matchstring)
 {
     bool found = FALSE;
     DWORD total = 0;
     SP_DEVINFO_DATA spDevInfoData;
 
-    std::vector<FindByHwIdResult> results;
+    std::vector<nefarius::devcon::FindByHwIdResult> results;
 
     guards::HDEVINFOHandleGuard hDevInfo(SetupDiGetClassDevs(
         nullptr,
@@ -975,7 +808,7 @@ std::expected<std::vector<devcon::FindByHwIdResult>, Win32Error> devcon::find_by
             found = TRUE;
             total++;
 
-            FindByHwIdResult result{entries};
+            nefarius::devcon::FindByHwIdResult result{entries};
 
             const auto descProperty = GetDeviceRegistryProperty(
                 hDevInfo.get(),

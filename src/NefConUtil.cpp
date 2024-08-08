@@ -249,7 +249,7 @@ int main(int argc, char* argv[])
 
         bool rebootRequired;
 
-        if (!devcon::install_driver(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
+        if (!nefarius::devcon::InstallDriver(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
         {
             logger->error("Failed to install driver, error: %v", winapi::GetLastErrorStdStr());
             return GetLastError();
@@ -289,7 +289,7 @@ int main(int argc, char* argv[])
 
         bool rebootRequired;
 
-        if (!devcon::uninstall_driver(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
+        if (!nefarius::devcon::UninstallDriver(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
         {
             logger->error("Failed to uninstall driver, error: %v", winapi::GetLastErrorStdStr());
             return GetLastError();
@@ -406,8 +406,8 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = devcon::create(nefarius::utilities::ConvertAnsiToWide(className), &clID,
-                                  nefarius::utilities::WideMultiStringArray(nefarius::utilities::ConvertAnsiToWide(hwId)));
+        auto ret = nefarius::devcon::Create(nefarius::utilities::ConvertAnsiToWide(className), &clID,
+                                            nefarius::utilities::WideMultiStringArray(nefarius::utilities::ConvertAnsiToWide(hwId)));
 
         if (!ret)
         {
