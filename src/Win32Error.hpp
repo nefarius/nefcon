@@ -4,7 +4,7 @@
 #include <string>
 #include <format>
 
-#include "UniUtil.h"
+#include <nefarius/neflib/UniUtil.hpp>
 
 namespace nefarius::util
 {
@@ -73,10 +73,10 @@ namespace nefarius::util
             if (additionalMessage.empty())
                 return message;
 
-            return ConvertAnsiToWide(std::format(
+            return utilities::ConvertAnsiToWide(std::format(
                 "{} failed with error: {} ({})",
                 additionalMessage,
-                ConvertWideToANSI(message),
+                utilities::ConvertWideToANSI(message),
                 errorCode
             ));
         }

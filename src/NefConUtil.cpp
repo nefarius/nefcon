@@ -142,7 +142,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = add_device_class_filter(&clID, ConvertAnsiToWide(serviceName), pos);
+        auto ret = add_device_class_filter(&clID, nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
 
         if (ret)
         {
@@ -204,7 +204,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = remove_device_class_filter(&clID, ConvertAnsiToWide(serviceName), pos);
+        auto ret = remove_device_class_filter(&clID, nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
 
         if (ret)
         {
@@ -249,7 +249,7 @@ int main(int argc, char* argv[])
 
         bool rebootRequired;
 
-        if (!devcon::install_driver(ConvertAnsiToWide(infPath), &rebootRequired))
+        if (!devcon::install_driver(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
         {
             logger->error("Failed to install driver, error: %v", winapi::GetLastErrorStdStr());
             return GetLastError();
@@ -289,7 +289,7 @@ int main(int argc, char* argv[])
 
         bool rebootRequired;
 
-        if (!devcon::uninstall_driver(ConvertAnsiToWide(infPath), &rebootRequired))
+        if (!devcon::uninstall_driver(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
         {
             logger->error("Failed to uninstall driver, error: %v", winapi::GetLastErrorStdStr());
             return GetLastError();
@@ -406,8 +406,8 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = devcon::create(ConvertAnsiToWide(className), &clID,
-                                  nefarius::util::WideMultiStringArray(ConvertAnsiToWide(hwId)));
+        auto ret = devcon::create(nefarius::utilities::ConvertAnsiToWide(className), &clID,
+                                  nefarius::util::WideMultiStringArray(nefarius::utilities::ConvertAnsiToWide(hwId)));
 
         if (!ret)
         {
@@ -450,7 +450,7 @@ int main(int argc, char* argv[])
 
         bool rebootRequired;
 
-        auto results = devcon::uninstall_device_and_driver(&clID, ConvertAnsiToWide(hwId), &rebootRequired);
+        auto results = devcon::uninstall_device_and_driver(&clID, nefarius::utilities::ConvertAnsiToWide(hwId), &rebootRequired);
 
         // TODO: finish proper error propagation!
         for (const auto& item : results)
@@ -498,7 +498,7 @@ int main(int argc, char* argv[])
 
         bool rebootRequired = false;
 
-        if (!devcon::inf_default_install(ConvertAnsiToWide(infPath), &rebootRequired))
+        if (!devcon::inf_default_install(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
         {
             logger->error("Failed to install INF file, error: %v", winapi::GetLastErrorStdStr());
             return GetLastError();
@@ -545,7 +545,7 @@ int main(int argc, char* argv[])
 
         bool rebootRequired = false;
 
-        if (!devcon::inf_default_uninstall(ConvertAnsiToWide(infPath), &rebootRequired))
+        if (!devcon::inf_default_uninstall(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
         {
             logger->error("Failed to uninstall INF file, error: %v", winapi::GetLastErrorStdStr());
             return GetLastError();
@@ -601,7 +601,7 @@ int main(int argc, char* argv[])
         if (!ret && GetLastError() == ERROR_ACCESS_DENIED)
         {
             // ...take ownership of protected file (e.g. within the system directories)...
-            if (!winapi::TakeFileOwnership(logger, ConvertAnsiToWide(filePath).c_str()))
+            if (!winapi::TakeFileOwnership(logger, nefarius::utilities::ConvertAnsiToWide(filePath).c_str()))
             {
                 logger->error("Failed to take ownership of file, error: %v", winapi::GetLastErrorStdStr());
                 return GetLastError();
@@ -632,7 +632,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        const auto findResult = devcon::find_by_hwid(ConvertAnsiToWide(hwId));
+        const auto findResult = devcon::find_by_hwid(nefarius::utilities::ConvertAnsiToWide(hwId));
 
         if (!findResult)
         {

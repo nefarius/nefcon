@@ -45,6 +45,5 @@
 #include "MultiStringArray.hpp"
 #include "Devcon.h"
 #include "NefConSetup.h"
-#include "UniUtil.h"
 #include "ScopeGuards.hpp"
 #include "ColorLogging.hpp"

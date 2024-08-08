@@ -1,0 +1,14 @@
+{
+  "registries": [
+    {
+      "kind": "git",
+      "repository": "https://github.com/nefarius/nefarius-vcpkg-registry.git",
+      "baseline": "6eef1973acf0c44f683a202fa3a89ae8e8ff86ce",
+      "packages": [ "neflib" ]
+    }
+  ],
+  "default-registry": {
+    "kind": "builtin",
+    "baseline": "2024.07.12"
+  }
+}

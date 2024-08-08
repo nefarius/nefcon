@@ -5,6 +5,7 @@
   "license": "MIT",
   "supports": "!(arm | uwp)",
   "dependencies": [
+    "neflib",
     "argh",
     "easyloggingpp",
     "detours",

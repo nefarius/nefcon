@@ -47,9 +47,6 @@
     <ClInclude Include=".\src\NefConSetup.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include=".\src\UniUtil.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\MultiStringArray.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -70,5 +67,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="vcpkg.json" />
+    <None Include="vcpkg-configuration.json" />
   </ItemGroup>
 </Project>
