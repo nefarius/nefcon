@@ -5,8 +5,12 @@
   "license": "MIT",
   "supports": "!(arm | uwp)",
   "dependencies": [
+    "neflib",
     "argh",
     "easyloggingpp",
-    "detours"
+    "detours",
+    "scope-guard",
+    "wil",
+    "color-console"
   ]
 }
