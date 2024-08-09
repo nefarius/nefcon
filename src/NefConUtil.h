@@ -27,6 +27,7 @@
 #include <vector>
 #include <string>
 #include <optional>
+#include <expected>
 
 //
 // Add some colors to console
@@ -42,7 +43,6 @@
 //
 // Internal
 // 
-#include "Devcon.h"
 #include "NefConSetup.h"
 #include "ColorLogging.hpp"
 

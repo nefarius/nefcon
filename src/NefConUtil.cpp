@@ -138,7 +138,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = AddDeviceClassFilter(&guid.value(), nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
+        auto ret = nefarius::devcon::AddDeviceClassFilter(&guid.value(), nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
 
         if (ret)
         {
@@ -447,7 +447,7 @@ int main(int argc, char* argv[])
 
         bool rebootRequired;
 
-        auto results = devcon::uninstall_device_and_driver(&guid.value(), nefarius::utilities::ConvertAnsiToWide(hwId),
+        auto results = nefarius::devcon::UninstallDeviceAndDriver(&guid.value(), nefarius::utilities::ConvertAnsiToWide(hwId),
                                                            &rebootRequired);
 
         // TODO: finish proper error propagation!
@@ -496,7 +496,7 @@ int main(int argc, char* argv[])
 
         bool rebootRequired = false;
 
-        if (!devcon::inf_default_install(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
+        if (!nefarius::devcon::InfDefaultInstall(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
         {
             logger->error("Failed to install INF file, error: %v", winapi::GetLastErrorStdStr());
             return GetLastError();
@@ -543,7 +543,7 @@ int main(int argc, char* argv[])
 
         bool rebootRequired = false;
 
-        if (!devcon::inf_default_uninstall(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
+        if (!nefarius::devcon::InfDefaultUninstall(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
         {
             logger->error("Failed to uninstall INF file, error: %v", winapi::GetLastErrorStdStr());
             return GetLastError();
@@ -630,7 +630,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        const auto findResult = devcon::find_by_hwid(nefarius::utilities::ConvertAnsiToWide(hwId));
+        const auto findResult = nefarius::devcon::FindByHwId(nefarius::utilities::ConvertAnsiToWide(hwId));
 
         if (!findResult)
         {
