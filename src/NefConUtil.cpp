@@ -111,9 +111,9 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        GUID clID;
+        const auto guid = nefarius::winapi::GUIDFromString(classGuid);
 
-        if (!nefarius::winapi::GUIDFromString(classGuid, &clID))
+        if (!guid)
         {
             logger->error(
                 "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
@@ -138,7 +138,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = AddDeviceClassFilter(&clID, nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
+        auto ret = AddDeviceClassFilter(&guid.value(), nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
 
         if (ret)
         {
@@ -173,9 +173,9 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        GUID clID;
+        const auto guid = nefarius::winapi::GUIDFromString(classGuid);
 
-        if (!nefarius::winapi::GUIDFromString(classGuid, &clID))
+        if (!guid)
         {
             logger->error(
                 "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
@@ -200,7 +200,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = RemoveDeviceClassFilter(&clID, nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
+        auto ret = RemoveDeviceClassFilter(&guid.value(), nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
 
         if (ret)
         {
@@ -393,17 +393,18 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        GUID clID;
+        const auto guid = nefarius::winapi::GUIDFromString(classGuid);
 
-        if (!nefarius::winapi::GUIDFromString(classGuid, &clID))
+        if (!guid)
         {
             logger->error(
                 "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
             return EXIT_FAILURE;
         }
 
-        auto ret = nefarius::devcon::Create(nefarius::utilities::ConvertAnsiToWide(className), &clID,
-                                            nefarius::utilities::WideMultiStringArray(nefarius::utilities::ConvertAnsiToWide(hwId)));
+        auto ret = nefarius::devcon::Create(nefarius::utilities::ConvertAnsiToWide(className), &guid.value(),
+                                            nefarius::utilities::WideMultiStringArray(
+                                                nefarius::utilities::ConvertAnsiToWide(hwId)));
 
         if (!ret)
         {
@@ -435,9 +436,9 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        GUID clID;
+        const auto guid = nefarius::winapi::GUIDFromString(classGuid);
 
-        if (!nefarius::winapi::GUIDFromString(classGuid, &clID))
+        if (!guid)
         {
             logger->error(
                 "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
@@ -446,7 +447,8 @@ int main(int argc, char* argv[])
 
         bool rebootRequired;
 
-        auto results = devcon::uninstall_device_and_driver(&clID, nefarius::utilities::ConvertAnsiToWide(hwId), &rebootRequired);
+        auto results = devcon::uninstall_device_and_driver(&guid.value(), nefarius::utilities::ConvertAnsiToWide(hwId),
+                                                           &rebootRequired);
 
         // TODO: finish proper error propagation!
         for (const auto& item : results)
