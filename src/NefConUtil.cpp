@@ -747,7 +747,7 @@ namespace
 
         if (!isAdmin)
         {
-            logger->error("Failed to determine elevation status, error: ", winapi::GetLastErrorStdStr());
+            logger->error("Failed to determine elevation status, error: ", isAdmin.error().getErrorMessageA());
             errorCode = EXIT_FAILURE;
             return false;
         }
