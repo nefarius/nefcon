@@ -55,3 +55,4 @@
 #include <nefarius/neflib/INFHandleGuard.hpp>
 #include <nefarius/neflib/LibraryHelper.hpp>
 #include <nefarius/neflib/Devcon.hpp>
+#include <nefarius/neflib/MiscWinApi.hpp>

@@ -20,10 +20,6 @@ namespace
 {
     bool IsAdmin(int& errorCode);
 
-    using GUIDFromString_t = BOOL(WINAPI*)(_In_ LPCSTR, _Out_ LPGUID);
-
-    bool GUIDFromString(const std::string& input, GUID* guid);
-
     void CustomizeEasyLoggingColoredConsole();
 }
 
@@ -117,7 +113,7 @@ int main(int argc, char* argv[])
 
         GUID clID;
 
-        if (!GUIDFromString(classGuid, &clID))
+        if (!nefarius::winapi::GUIDFromString(classGuid, &clID))
         {
             logger->error(
                 "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
@@ -179,7 +175,7 @@ int main(int argc, char* argv[])
 
         GUID clID;
 
-        if (!GUIDFromString(classGuid, &clID))
+        if (!nefarius::winapi::GUIDFromString(classGuid, &clID))
         {
             logger->error(
                 "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
@@ -341,7 +337,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (!winapi::CreateDriverService(serviceName.c_str(), displayName.c_str(), binPath.c_str()))
+        if (!nefarius::winapi::services::CreateDriverService(serviceName.c_str(), displayName.c_str(), binPath.c_str()))
         {
             logger->error("Failed to create driver service, error: %v", winapi::GetLastErrorStdStr());
             return GetLastError();
@@ -363,7 +359,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (!winapi::DeleteDriverService(serviceName.c_str()))
+        if (!nefarius::winapi::services::DeleteDriverService(serviceName.c_str()))
         {
             logger->error("Failed to remove driver service, error: %v", winapi::GetLastErrorStdStr());
             return GetLastError();
@@ -399,7 +395,7 @@ int main(int argc, char* argv[])
 
         GUID clID;
 
-        if (!GUIDFromString(classGuid, &clID))
+        if (!nefarius::winapi::GUIDFromString(classGuid, &clID))
         {
             logger->error(
                 "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
@@ -441,7 +437,7 @@ int main(int argc, char* argv[])
 
         GUID clID;
 
-        if (!GUIDFromString(classGuid, &clID))
+        if (!nefarius::winapi::GUIDFromString(classGuid, &clID))
         {
             logger->error(
                 "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
@@ -601,7 +597,7 @@ int main(int argc, char* argv[])
         if (!ret && GetLastError() == ERROR_ACCESS_DENIED)
         {
             // ...take ownership of protected file (e.g. within the system directories)...
-            if (!winapi::TakeFileOwnership(logger, nefarius::utilities::ConvertAnsiToWide(filePath).c_str()))
+            if (!nefarius::winapi::fs::TakeFileOwnership(nefarius::utilities::ConvertAnsiToWide(filePath).c_str()))
             {
                 logger->error("Failed to take ownership of file, error: %v", winapi::GetLastErrorStdStr());
                 return GetLastError();
@@ -744,41 +740,22 @@ namespace
     bool IsAdmin(int& errorCode)
     {
         el::Logger* logger = el::Loggers::getLogger("default");
-        BOOL isAdmin = FALSE;
 
-        if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+        const auto isAdmin = nefarius::winapi::IsAppRunningAsAdminMode();
+
+        if (!isAdmin)
         {
             logger->error("Failed to determine elevation status, error: ", winapi::GetLastErrorStdStr());
             errorCode = EXIT_FAILURE;
             return false;
         }
 
-        if (!isAdmin)
+        if (!isAdmin.value())
         {
             logger->error(
                 "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled.");
             errorCode = EXIT_FAILURE;
             return false;
-        }
-
-        return true;
-    }
-
-    bool GUIDFromString(const std::string& input, GUID* guid)
-    {
-        // try without brackets...
-        if (UuidFromStringA(RPC_CSTR(input.data()), guid) == RPC_S_INVALID_STRING_UUID)
-        {
-            const HMODULE shell32 = LoadLibraryA("Shell32.dll");
-
-            if (shell32 == nullptr)
-                return false;
-
-            const auto pFnGUIDFromString = reinterpret_cast<GUIDFromString_t>(
-                GetProcAddress(shell32, MAKEINTRESOURCEA(703)));
-
-            // ...finally try with brackets
-            return pFnGUIDFromString(input.c_str(), guid);
         }
 
         return true;
