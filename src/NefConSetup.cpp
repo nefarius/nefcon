@@ -30,41 +30,6 @@ std::string winapi::GetLastErrorStdStr(DWORD errorCode)
     return std::string("LEER");
 }
 
-std::string winapi::GetVersionFromFile(std::string FilePath)
-{
-    DWORD verHandle = 0;
-    UINT size = 0;
-    LPBYTE lpBuffer = nullptr;
-    DWORD verSize = GetFileVersionInfoSizeA(FilePath.c_str(), &verHandle);
-    std::stringstream versionString;
-
-    if (verSize != NULL)
-    {
-        auto verData = new char[verSize];
-
-        if (GetFileVersionInfoA(FilePath.c_str(), verHandle, verSize, verData))
-        {
-            if (VerQueryValueA(verData, "\\", (VOID FAR * FAR*)&lpBuffer, &size))
-            {
-                if (size)
-                {
-                    auto* verInfo = (VS_FIXEDFILEINFO*)lpBuffer;
-                    if (verInfo->dwSignature == 0xfeef04bd)
-                    {
-                        versionString
-                            << static_cast<ULONG>(HIWORD(verInfo->dwProductVersionMS)) << "."
-                            << static_cast<ULONG>(LOWORD(verInfo->dwProductVersionMS)) << "."
-                            << static_cast<ULONG>(HIWORD(verInfo->dwProductVersionLS));
-                    }
-                }
-            }
-        }
-        delete[] verData;
-    }
-
-    return versionString.str();
-}
-
 std::string winapi::GetImageBasePath()
 {
     char myPath[MAX_PATH + 1] = {0};

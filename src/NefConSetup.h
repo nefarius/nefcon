@@ -9,7 +9,5 @@ namespace winapi
 {
     std::string GetLastErrorStdStr(DWORD errorCode = ERROR_SUCCESS);
 
-    std::string GetVersionFromFile(std::string FilePath);
-
     std::string GetImageBasePath();
 };

@@ -671,8 +671,8 @@ int main(int argc, char* argv[])
 
     if (cmdl[{"-v", "--version"}])
     {
-        std::cout << "nefcon version " <<
-            winapi::GetVersionFromFile(winapi::GetImageBasePath())
+        std::cout << "nefcon version " << 
+            to_string(nefarius::winapi::fs::GetProductVersionFromFile(winapi::GetImageBasePath()).value())
             << " (C) Nefarius Software Solutions e.U."
             << std::endl;
         return EXIT_SUCCESS;
