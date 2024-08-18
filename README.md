@@ -95,3 +95,4 @@ This project uses the following 3rd party resources:
 - [Microsoft Detours](https://github.com/microsoft/Detours)
 - [A modern C++ scope guard that is easy to use but hard to misuse](https://github.com/ricab/scope_guard)
 - [Windows Implementation Libraries (WIL)](https://github.com/microsoft/wil)
+- [My opinionated collection of C++ utilities](https://github.com/nefarius/neflib)
