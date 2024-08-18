@@ -66,7 +66,7 @@ int main(int argc, char* argv[])
 
     for (i = 0; i < nArgs; i++)
     {
-        narrow.push_back(ConvertWideToANSI(std::wstring(szArglist[i])));
+        narrow.push_back(nefarius::utilities::ConvertWideToANSI(std::wstring(szArglist[i])));
     }
 
     argv.resize(nArgs);
