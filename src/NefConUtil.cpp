@@ -20,7 +20,9 @@ namespace
 {
     bool IsAdmin(int& errorCode);
 
+#if !defined(NEFCON_WINMAIN)
     void CustomizeEasyLoggingColoredConsole();
+#endif
 }
 
 
@@ -50,32 +52,19 @@ int main(int argc, char* argv[])
     });
 
 #if defined(NEFCON_WINMAIN)
-    LPWSTR* szArglist;
-    int nArgs;
-    int i;
+    auto cliArgs = nefarius::winapi::cli::GetCommandLineArgs();
 
-    szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
-    if (nullptr == szArglist)
+    if (!cliArgs)
     {
-        std::cout << color(red) << "CommandLineToArgvW failed" << std::endl;
+        std::cout << color(red) << cliArgs.error().getErrorMessageA() << std::endl;
         return EXIT_FAILURE;
     }
 
-    std::vector<const char*> argv;
-    std::vector<std::string> narrow;
+    int argc = 0;
+    auto argv = cliArgs.value().AsArgv(&argc);
 
-    for (i = 0; i < nArgs; i++)
-    {
-        narrow.push_back(nefarius::utilities::ConvertWideToANSI(std::wstring(szArglist[i])));
-    }
-
-    argv.resize(nArgs);
-    std::ranges::transform(narrow, argv.begin(), [](const std::string& arg) { return arg.c_str(); });
-
-    argv.push_back(nullptr);
-
-    START_EASYLOGGINGPP(nArgs, &argv[0]);
-    cmdl.parse(nArgs, &argv[0]);
+    START_EASYLOGGINGPP(argc, argv.data());
+    cmdl.parse(argc, argv.data());
 #else
     START_EASYLOGGINGPP(argc, argv);
     CustomizeEasyLoggingColoredConsole();
@@ -763,6 +752,7 @@ namespace
         return true;
     }
 
+#if !defined(NEFCON_WINMAIN)
     void CustomizeEasyLoggingColoredConsole()
     {
         el::Configurations conf;
@@ -783,4 +773,5 @@ namespace
         // Apply the configuration
         el::Loggers::reconfigureLogger("default", conf);
     }
+#endif
 }
