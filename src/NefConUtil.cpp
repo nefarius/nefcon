@@ -732,7 +732,7 @@ namespace
     {
         el::Logger* logger = el::Loggers::getLogger("default");
 
-        const auto isAdmin = nefarius::winapi::IsAppRunningAsAdminMode();
+        const auto isAdmin = nefarius::winapi::security::IsAppRunningAsAdminMode();
 
         if (!isAdmin)
         {
