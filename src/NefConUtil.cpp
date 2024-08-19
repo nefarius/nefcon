@@ -326,7 +326,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (!nefarius::winapi::services::CreateDriverService(serviceName.c_str(), displayName.c_str(), binPath.c_str()))
+        if (!nefarius::winapi::services::CreateDriverService(serviceName, displayName, binPath))
         {
             logger->error("Failed to create driver service, error: %v", winapi::GetLastErrorStdStr());
             return GetLastError();
@@ -348,7 +348,7 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (!nefarius::winapi::services::DeleteDriverService(serviceName.c_str()))
+        if (!nefarius::winapi::services::DeleteDriverService(serviceName))
         {
             logger->error("Failed to remove driver service, error: %v", winapi::GetLastErrorStdStr());
             return GetLastError();
@@ -588,7 +588,7 @@ int main(int argc, char* argv[])
         if (!ret && GetLastError() == ERROR_ACCESS_DENIED)
         {
             // ...take ownership of protected file (e.g. within the system directories)...
-            if (!nefarius::winapi::fs::TakeFileOwnership(nefarius::utilities::ConvertAnsiToWide(filePath).c_str()))
+            if (!nefarius::winapi::fs::TakeFileOwnership(filePath))
             {
                 logger->error("Failed to take ownership of file, error: %v", winapi::GetLastErrorStdStr());
                 return GetLastError();

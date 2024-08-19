@@ -28,6 +28,7 @@
 #include <string>
 #include <optional>
 #include <expected>
+#include <variant>
 
 //
 // Add some colors to console
