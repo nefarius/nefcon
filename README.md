@@ -96,3 +96,5 @@ This project uses the following 3rd party resources:
 - [A modern C++ scope guard that is easy to use but hard to misuse](https://github.com/ricab/scope_guard)
 - [Windows Implementation Libraries (WIL)](https://github.com/microsoft/wil)
 - [My opinionated collection of C++ utilities](https://github.com/nefarius/neflib)
+- [Replacing Device Console (DevCon.exe)](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-migration)
+- [PnPUtil](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/pnputil)
