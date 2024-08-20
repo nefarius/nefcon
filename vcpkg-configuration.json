@@ -3,7 +3,7 @@
     {
       "kind": "git",
       "repository": "https://github.com/nefarius/nefarius-vcpkg-registry.git",
-      "baseline": "7529dbe8b8f7bd5bde995085fb634c4506b089ed",
+      "baseline": "e1a16a87807eb97b60cca157aa2b00e346cb2092",
       "packages": [ "neflib" ]
     }
   ],
