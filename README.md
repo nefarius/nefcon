@@ -98,3 +98,4 @@ This project uses the following 3rd party resources:
 - [My opinionated collection of C++ utilities](https://github.com/nefarius/neflib)
 - [Replacing Device Console (DevCon.exe)](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-migration)
 - [PnPUtil](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/pnputil)
+- [DevCon Install](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-install)
