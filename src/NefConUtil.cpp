@@ -88,6 +88,39 @@ int main(int argc, char* argv[])
     {
         const std::wstring infFilePath = nefarius::utilities::ConvertToWide(arguments[2]);
         const std::wstring hardwareId = nefarius::utilities::ConvertToWide(arguments[3]);
+
+        const auto infClassResult = nefarius::devcon::GetINFClass(infFilePath);
+
+        if (!infClassResult)
+        {
+            logger->error("Failed to get class information from INF file, error: %v",
+                          infClassResult.error().getErrorMessageA());
+            return infClassResult.error().getErrorCode();
+        }
+
+        const auto& infClass = infClassResult.value();
+
+        if (const auto createResult = nefarius::devcon::Create(
+                infClass.ClassName,
+                &infClass.ClassGUID,
+                nefarius::utilities::WideMultiStringArray(hardwareId));
+            !createResult)
+        {
+            logger->error("Failed to create device node, error: %v", createResult.error().getErrorMessageA());
+            return createResult.error().getErrorCode();
+        }
+
+        bool rebootRequired = false;
+
+        if (const auto updateResult = nefarius::devcon::Update(hardwareId, infFilePath, &rebootRequired); !updateResult)
+        {
+            logger->error("Failed to update device node(s) with driver, error: %v",
+                          updateResult.error().getErrorMessageA());
+            return updateResult.error().getErrorCode();
+        }
+
+        logger->info("Device and driver installed successfully");
+        return EXIT_SUCCESS;
     }
 
 #pragma endregion
@@ -146,7 +179,8 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = nefarius::devcon::AddDeviceClassFilter(&guid.value(), nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
+        auto ret = nefarius::devcon::AddDeviceClassFilter(&guid.value(),
+                                                          nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
 
         if (ret)
         {
@@ -253,7 +287,8 @@ int main(int argc, char* argv[])
 
         bool rebootRequired;
 
-        if (const auto result = nefarius::devcon::InstallDriver(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired); !result)
+        if (const auto result = nefarius::devcon::InstallDriver(nefarius::utilities::ConvertAnsiToWide(infPath),
+                                                                &rebootRequired); !result)
         {
             logger->error("Failed to install driver, error: %v", result.error().getErrorMessageA());
             return result.error().getErrorCode();
@@ -293,7 +328,8 @@ int main(int argc, char* argv[])
 
         bool rebootRequired;
 
-        if (const auto result = nefarius::devcon::UninstallDriver(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired); !result)
+        if (const auto result = nefarius::devcon::UninstallDriver(nefarius::utilities::ConvertAnsiToWide(infPath),
+                                                                  &rebootRequired); !result)
         {
             logger->error("Failed to uninstall driver, error: %v", result.error().getErrorMessageA());
             return result.error().getErrorCode();
@@ -345,7 +381,8 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (const auto result = nefarius::winapi::services::CreateDriverService(serviceName, displayName, binPath); !result)
+        if (const auto result = nefarius::winapi::services::CreateDriverService(serviceName, displayName, binPath); !
+            result)
         {
             logger->error("Failed to create driver service, error: %v", result.error().getErrorMessageA());
             return result.error().getErrorCode();
@@ -455,8 +492,9 @@ int main(int argc, char* argv[])
 
         bool rebootRequired;
 
-        auto results = nefarius::devcon::UninstallDeviceAndDriver(&guid.value(), nefarius::utilities::ConvertAnsiToWide(hwId),
-                                                           &rebootRequired);
+        auto results = nefarius::devcon::UninstallDeviceAndDriver(&guid.value(),
+                                                                  nefarius::utilities::ConvertAnsiToWide(hwId),
+                                                                  &rebootRequired);
 
         for (const auto& item : results)
         {
@@ -503,7 +541,8 @@ int main(int argc, char* argv[])
 
         bool rebootRequired = false;
 
-        if (const auto result = nefarius::devcon::InfDefaultInstall(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired); !result)
+        if (const auto result = nefarius::devcon::InfDefaultInstall(nefarius::utilities::ConvertAnsiToWide(infPath),
+                                                                    &rebootRequired); !result)
         {
             logger->error("Failed to install INF file, error: %v", result.error().getErrorMessageA());
             return result.error().getErrorCode();
@@ -550,7 +589,8 @@ int main(int argc, char* argv[])
 
         bool rebootRequired = false;
 
-        if (const auto result = nefarius::devcon::InfDefaultUninstall(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired); !result)
+        if (const auto result = nefarius::devcon::InfDefaultUninstall(nefarius::utilities::ConvertAnsiToWide(infPath),
+                                                                      &rebootRequired); !result)
         {
             logger->error("Failed to uninstall INF file, error: %v", result.error().getErrorMessageA());
             return result.error().getErrorCode();
@@ -618,7 +658,8 @@ int main(int argc, char* argv[])
 
         if (!ret)
         {
-            logger->error("Failed to register file for removal, error: %v", nefarius::utilities::Win32Error("MoveFileExA").getErrorMessageA());
+            logger->error("Failed to register file for removal, error: %v",
+                          nefarius::utilities::Win32Error("MoveFileExA").getErrorMessageA());
             return GetLastError();
         }
 
@@ -678,7 +719,7 @@ int main(int argc, char* argv[])
 
     if (cmdl[{"-v", "--version"}])
     {
-        std::cout << "nefcon version " << 
+        std::cout << "nefcon version " <<
             to_string(nefarius::winapi::fs::GetProductVersionFromFile(GetImageBasePath()).value())
             << " (C) Nefarius Software Solutions e.U."
             << '\n';
