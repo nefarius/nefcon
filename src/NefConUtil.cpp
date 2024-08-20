@@ -59,7 +59,7 @@ int main(int argc, char* argv[])
 
     if (!cliArgs)
     {
-        std::cout << color(red) << cliArgs.error().getErrorMessageA() << std::endl;
+        std::cout << color(red) << cliArgs.error().getErrorMessageA() << '\n';
         return EXIT_FAILURE;
     }
 
@@ -86,6 +86,9 @@ int main(int argc, char* argv[])
     // 
     if (arguments.size() > 3 && arguments[1] == "install")
     {
+        int errorCode;
+        if (!IsAdmin(errorCode)) return errorCode;
+
         const std::wstring infFilePath = nefarius::utilities::ConvertToWide(arguments[2]);
         const std::wstring hardwareId = nefarius::utilities::ConvertToWide(arguments[3]);
 
