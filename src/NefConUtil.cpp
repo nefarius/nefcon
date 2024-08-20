@@ -681,7 +681,7 @@ int main(int argc, char* argv[])
         std::cout << "nefcon version " << 
             to_string(nefarius::winapi::fs::GetProductVersionFromFile(GetImageBasePath()).value())
             << " (C) Nefarius Software Solutions e.U."
-            << std::endl;
+            << '\n';
         return EXIT_SUCCESS;
     }
 
@@ -692,52 +692,52 @@ int main(int argc, char* argv[])
 #if defined(NEFCON_WINMAIN)
     std::cout << "usage: .\\nefconw [options] [logging]" << std::endl << std::endl;
 #else
-    std::cout << "usage: .\\nefconc [options] [logging]" << std::endl << std::endl;
+    std::cout << "usage: .\\nefconc [options] [logging]" << '\n' << '\n';
 #endif
-    std::cout << "  options:" << std::endl;
-    std::cout << "    --install-driver           Invoke the installation of a given PNP driver" << std::endl;
-    std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << std::endl;
-    std::cout << "    --uninstall-driver         Invoke the removal of a given PNP driver" << std::endl;
-    std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << std::endl;
-    std::cout << "    --create-device-node       Create a new ROOT enumerated virtual device" << std::endl;
-    std::cout << "      --hardware-id            Hardware ID of the new device (required)" << std::endl;
-    std::cout << "      --class-name             Device Class Name of the new device (required)" << std::endl;
-    std::cout << "      --class-guid             Device Class GUID of the new device (required)" << std::endl;
-    std::cout << "    --remove-device-node       Removes a device and its driver" << std::endl;
-    std::cout << "      --hardware-id            Hardware ID of the device (required)" << std::endl;
-    std::cout << "      --class-guid             Device Class GUID of the device (required)" << std::endl;
-    std::cout << "    --add-class-filter         Adds a service to a device class' filter collection" << std::endl;
-    std::cout << "      --position               Which filter to modify (required)" << std::endl;
-    std::cout << "                                 Valid values include: upper|lower" << std::endl;
-    std::cout << "      --service-name           The driver service name to insert (required)" << std::endl;
-    std::cout << "      --class-guid             Device Class GUID to modify (required)" << std::endl;
-    std::cout << "    --remove-class-filter      Removes a service to a device class' filter collection" << std::endl;
-    std::cout << "      --position               Which filter to modify (required)" << std::endl;
-    std::cout << "                                 Valid values include: upper|lower" << std::endl;
-    std::cout << "      --service-name           The driver service name to insert (required)" << std::endl;
-    std::cout << "      --class-guid             Device Class GUID to modify (required)" << std::endl;
-    std::cout << "    --create-driver-service    Creates a new service with a kernel driver as binary" << std::endl;
-    std::cout << "      --bin-path               Absolute path to the .sys file (required)" << std::endl;
-    std::cout << "      --service-name           The driver service name to create (required)" << std::endl;
-    std::cout << "      --display-name           The friendly name of the service (required)" << std::endl;
-    std::cout << "    --remove-driver-service    Removes an existing kernel driver service" << std::endl;
-    std::cout << "      --service-name           The driver service name to remove (required)" << std::endl;
-    std::cout << "    --inf-default-install      Installs an INF file with a [DefaultInstall] section" << std::endl;
-    std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << std::endl;
-    std::cout << "    --inf-default-uninstall    Uninstalls an INF file with a [DefaultUninstall] section" << std::endl;
-    std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << std::endl;
-    std::cout << "    --delete-file-on-reboot    Marks a given file to get deleted on next reboot" << std::endl;
-    std::cout << "      --file-path              The absolute path of the file to remove (required)" << std::endl;
-    std::cout << "    --find-hwid                Shows one or more devices matching a partial Hardware ID" << std::endl;
+    std::cout << "  options:" << '\n';
+    std::cout << "    --install-driver           Invoke the installation of a given PNP driver" << '\n';
+    std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << '\n';
+    std::cout << "    --uninstall-driver         Invoke the removal of a given PNP driver" << '\n';
+    std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << '\n';
+    std::cout << "    --create-device-node       Create a new ROOT enumerated virtual device" << '\n';
+    std::cout << "      --hardware-id            Hardware ID of the new device (required)" << '\n';
+    std::cout << "      --class-name             Device Class Name of the new device (required)" << '\n';
+    std::cout << "      --class-guid             Device Class GUID of the new device (required)" << '\n';
+    std::cout << "    --remove-device-node       Removes a device and its driver" << '\n';
+    std::cout << "      --hardware-id            Hardware ID of the device (required)" << '\n';
+    std::cout << "      --class-guid             Device Class GUID of the device (required)" << '\n';
+    std::cout << "    --add-class-filter         Adds a service to a device class' filter collection" << '\n';
+    std::cout << "      --position               Which filter to modify (required)" << '\n';
+    std::cout << "                                 Valid values include: upper|lower" << '\n';
+    std::cout << "      --service-name           The driver service name to insert (required)" << '\n';
+    std::cout << "      --class-guid             Device Class GUID to modify (required)" << '\n';
+    std::cout << "    --remove-class-filter      Removes a service to a device class' filter collection" << '\n';
+    std::cout << "      --position               Which filter to modify (required)" << '\n';
+    std::cout << "                                 Valid values include: upper|lower" << '\n';
+    std::cout << "      --service-name           The driver service name to insert (required)" << '\n';
+    std::cout << "      --class-guid             Device Class GUID to modify (required)" << '\n';
+    std::cout << "    --create-driver-service    Creates a new service with a kernel driver as binary" << '\n';
+    std::cout << "      --bin-path               Absolute path to the .sys file (required)" << '\n';
+    std::cout << "      --service-name           The driver service name to create (required)" << '\n';
+    std::cout << "      --display-name           The friendly name of the service (required)" << '\n';
+    std::cout << "    --remove-driver-service    Removes an existing kernel driver service" << '\n';
+    std::cout << "      --service-name           The driver service name to remove (required)" << '\n';
+    std::cout << "    --inf-default-install      Installs an INF file with a [DefaultInstall] section" << '\n';
+    std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << '\n';
+    std::cout << "    --inf-default-uninstall    Uninstalls an INF file with a [DefaultUninstall] section" << '\n';
+    std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << '\n';
+    std::cout << "    --delete-file-on-reboot    Marks a given file to get deleted on next reboot" << '\n';
+    std::cout << "      --file-path              The absolute path of the file to remove (required)" << '\n';
+    std::cout << "    --find-hwid                Shows one or more devices matching a partial Hardware ID" << '\n';
     std::cout << "      ---hardware-id           (Partial) Hardware ID of the device to match against (required)" <<
-        std::endl;
-    std::cout << "    -v, --version              Display version of this utility" << std::endl;
-    std::cout << std::endl;
-    std::cout << "  logging:" << std::endl;
+        '\n';
+    std::cout << "    -v, --version              Display version of this utility" << '\n';
+    std::cout << '\n';
+    std::cout << "  logging:" << '\n';
     std::cout << "    --default-log-file=.\\log.txt       Write details of execution to a log file (optional)" <<
-        std::endl;
-    std::cout << "    --verbose                          Turn on verbose/diagnostic logging (optional)" << std::endl;
-    std::cout << std::endl;
+        '\n';
+    std::cout << "    --verbose                          Turn on verbose/diagnostic logging (optional)" << '\n';
+    std::cout << '\n';
 
 #pragma endregion
 
