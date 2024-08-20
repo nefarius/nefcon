@@ -84,9 +84,10 @@ int main(int argc, char* argv[])
     //
     // Before testing any "regular" arguments, see if the user has used "devcon" tool compatible syntax
     // 
-    if (arguments.size() > 1 && arguments[1] == "install")
+    if (arguments.size() > 3 && arguments[1] == "install")
     {
-        
+        const std::wstring infFilePath = nefarius::utilities::ConvertToWide(arguments[2]);
+        const std::wstring hardwareId = nefarius::utilities::ConvertToWide(arguments[3]);
     }
 
 #pragma endregion
