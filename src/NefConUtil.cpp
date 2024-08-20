@@ -37,6 +37,10 @@ int WINAPI WinMain(
 int main(int argc, char* argv[])
 #endif
 {
+    UNREFERENCED_PARAMETER(hInstance);
+    UNREFERENCED_PARAMETER(hPrevInstance);
+    UNREFERENCED_PARAMETER(lpCmdLine);
+    UNREFERENCED_PARAMETER(nShowCmd);
     argh::parser cmdl;
     cmdl.add_params({
         "--inf-path",
