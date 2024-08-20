@@ -641,7 +641,7 @@ int main(int argc, char* argv[])
 
         if (!findResult)
         {
-            // TODO: better error handling!
+            logger->error("Failed to register search for devices, error: %v", findResult.error().getErrorMessageA());
             return findResult.error().getErrorCode();
         }
 
