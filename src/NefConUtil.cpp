@@ -122,8 +122,11 @@ int main(int argc, char* argv[])
             return updateResult.error().getErrorCode();
         }
 
-        logger->info("Device and driver installed successfully");
-        return EXIT_SUCCESS;
+        logger->info((rebootRequired)
+                         ? "Device and driver installed successfully, but a reboot is required"
+                         : "Device and driver installed successfully"
+        );
+        return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
     }
 
 #pragma endregion
