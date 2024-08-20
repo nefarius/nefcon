@@ -5,6 +5,8 @@
 
 #include <numeric>
 
+EXTERN_C IMAGE_DOS_HEADER __ImageBase;
+
 using namespace colorwin;
 
 INITIALIZE_EASYLOGGINGPP
@@ -19,6 +21,8 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 namespace
 {
     bool IsAdmin(int& errorCode);
+
+    std::string GetImageBasePath();
 
 #if !defined(NEFCON_WINMAIN)
     void CustomizeEasyLoggingColoredConsole();
@@ -51,7 +55,6 @@ int main(int argc, char* argv[])
         "--file-path"
     });
 
-#if defined(NEFCON_WINMAIN)
     auto cliArgs = nefarius::winapi::cli::GetCommandLineArgs();
 
     if (!cliArgs)
@@ -60,6 +63,7 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
+#if defined(NEFCON_WINMAIN)
     int argc = 0;
     auto argv = cliArgs.value().AsArgv(&argc);
 
@@ -72,6 +76,20 @@ int main(int argc, char* argv[])
 #endif
 
     el::Logger* logger = el::Loggers::getLogger("default");
+
+    const auto arguments = cliArgs.value().Arguments;
+
+#pragma region Devcon emulation
+
+    //
+    // Before testing any "regular" arguments, see if the user has used "devcon" tool compatible syntax
+    // 
+    if (arguments.size() > 1 && arguments[1] == "install")
+    {
+        
+    }
+
+#pragma endregion
 
     std::string infPath, binPath, hwId, className, classGuid, serviceName, displayName, position, filePath;
 
@@ -135,8 +153,8 @@ int main(int argc, char* argv[])
             return EXIT_SUCCESS;
         }
 
-        logger->error("Failed to modify filter value, error: %v", winapi::GetLastErrorStdStr());
-        return GetLastError();
+        logger->error("Failed to modify filter value, error: %v", ret.error().getErrorMessageA());
+        return ret.error().getErrorCode();
     }
 
     if (cmdl[{"--remove-class-filter"}])
@@ -197,8 +215,8 @@ int main(int argc, char* argv[])
             return EXIT_SUCCESS;
         }
 
-        logger->error("Failed to modify filter value, error: %v", winapi::GetLastErrorStdStr());
-        return GetLastError();
+        logger->error("Failed to modify filter value, error: %v", ret.error().getErrorMessageA());
+        return ret.error().getErrorCode();
     }
 
 #pragma endregion
@@ -234,10 +252,10 @@ int main(int argc, char* argv[])
 
         bool rebootRequired;
 
-        if (!nefarius::devcon::InstallDriver(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
+        if (const auto result = nefarius::devcon::InstallDriver(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired); !result)
         {
-            logger->error("Failed to install driver, error: %v", winapi::GetLastErrorStdStr());
-            return GetLastError();
+            logger->error("Failed to install driver, error: %v", result.error().getErrorMessageA());
+            return result.error().getErrorCode();
         }
 
         logger->info("Driver installed successfully");
@@ -274,10 +292,10 @@ int main(int argc, char* argv[])
 
         bool rebootRequired;
 
-        if (!nefarius::devcon::UninstallDriver(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
+        if (const auto result = nefarius::devcon::UninstallDriver(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired); !result)
         {
-            logger->error("Failed to uninstall driver, error: %v", winapi::GetLastErrorStdStr());
-            return GetLastError();
+            logger->error("Failed to uninstall driver, error: %v", result.error().getErrorMessageA());
+            return result.error().getErrorCode();
         }
 
         logger->info("Driver uninstalled successfully");
@@ -326,10 +344,10 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (!nefarius::winapi::services::CreateDriverService(serviceName, displayName, binPath))
+        if (const auto result = nefarius::winapi::services::CreateDriverService(serviceName, displayName, binPath); !result)
         {
-            logger->error("Failed to create driver service, error: %v", winapi::GetLastErrorStdStr());
-            return GetLastError();
+            logger->error("Failed to create driver service, error: %v", result.error().getErrorMessageA());
+            return result.error().getErrorCode();
         }
 
         logger->info("Driver service created successfully");
@@ -348,10 +366,10 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (!nefarius::winapi::services::DeleteDriverService(serviceName))
+        if (const auto result = nefarius::winapi::services::DeleteDriverService(serviceName); !result)
         {
-            logger->error("Failed to remove driver service, error: %v", winapi::GetLastErrorStdStr());
-            return GetLastError();
+            logger->error("Failed to remove driver service, error: %v", result.error().getErrorMessageA());
+            return result.error().getErrorCode();
         }
 
         logger->info("Driver service removed successfully");
@@ -397,8 +415,8 @@ int main(int argc, char* argv[])
 
         if (!ret)
         {
-            logger->error("Failed to create device node, error: %v", winapi::GetLastErrorStdStr());
-            return GetLastError();
+            logger->error("Failed to create device node, error: %v", ret.error().getErrorMessageA());
+            return ret.error().getErrorCode();
         }
 
         logger->info("Device node created successfully");
@@ -439,13 +457,12 @@ int main(int argc, char* argv[])
         auto results = nefarius::devcon::UninstallDeviceAndDriver(&guid.value(), nefarius::utilities::ConvertAnsiToWide(hwId),
                                                            &rebootRequired);
 
-        // TODO: finish proper error propagation!
         for (const auto& item : results)
         {
             if (!item)
             {
-                logger->error("Failed to delete device node, error: %v", winapi::GetLastErrorStdStr());
-                return GetLastError();
+                logger->error("Failed to delete device node, error: %v", item.error().getErrorMessageA());
+                return item.error().getErrorCode();
             }
         }
 
@@ -485,10 +502,10 @@ int main(int argc, char* argv[])
 
         bool rebootRequired = false;
 
-        if (!nefarius::devcon::InfDefaultInstall(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
+        if (const auto result = nefarius::devcon::InfDefaultInstall(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired); !result)
         {
-            logger->error("Failed to install INF file, error: %v", winapi::GetLastErrorStdStr());
-            return GetLastError();
+            logger->error("Failed to install INF file, error: %v", result.error().getErrorMessageA());
+            return result.error().getErrorCode();
         }
 
         if (!rebootRequired)
@@ -532,10 +549,10 @@ int main(int argc, char* argv[])
 
         bool rebootRequired = false;
 
-        if (!nefarius::devcon::InfDefaultUninstall(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired))
+        if (const auto result = nefarius::devcon::InfDefaultUninstall(nefarius::utilities::ConvertAnsiToWide(infPath), &rebootRequired); !result)
         {
-            logger->error("Failed to uninstall INF file, error: %v", winapi::GetLastErrorStdStr());
-            return GetLastError();
+            logger->error("Failed to uninstall INF file, error: %v", result.error().getErrorMessageA());
+            return result.error().getErrorCode();
         }
 
         if (!rebootRequired)
@@ -588,10 +605,10 @@ int main(int argc, char* argv[])
         if (!ret && GetLastError() == ERROR_ACCESS_DENIED)
         {
             // ...take ownership of protected file (e.g. within the system directories)...
-            if (!nefarius::winapi::fs::TakeFileOwnership(filePath))
+            if (const auto result = nefarius::winapi::fs::TakeFileOwnership(filePath); !result)
             {
-                logger->error("Failed to take ownership of file, error: %v", winapi::GetLastErrorStdStr());
-                return GetLastError();
+                logger->error("Failed to take ownership of file, error: %v", result.error().getErrorMessageA());
+                return result.error().getErrorCode();
             }
 
             // ...and try again
@@ -600,7 +617,7 @@ int main(int argc, char* argv[])
 
         if (!ret)
         {
-            logger->error("Failed to register file for removal, error: %v", winapi::GetLastErrorStdStr());
+            logger->error("Failed to register file for removal, error: %v", nefarius::utilities::Win32Error("MoveFileExA").getErrorMessageA());
             return GetLastError();
         }
 
@@ -661,7 +678,7 @@ int main(int argc, char* argv[])
     if (cmdl[{"-v", "--version"}])
     {
         std::cout << "nefcon version " << 
-            to_string(nefarius::winapi::fs::GetProductVersionFromFile(winapi::GetImageBasePath()).value())
+            to_string(nefarius::winapi::fs::GetProductVersionFromFile(GetImageBasePath()).value())
             << " (C) Nefarius Software Solutions e.U."
             << std::endl;
         return EXIT_SUCCESS;
@@ -750,6 +767,19 @@ namespace
         }
 
         return true;
+    }
+
+    std::string GetImageBasePath()
+    {
+        char myPath[MAX_PATH + 1] = {};
+
+        GetModuleFileNameA(
+            reinterpret_cast<HINSTANCE>(&__ImageBase),
+            myPath,
+            MAX_PATH + 1
+        );
+
+        return {myPath};
     }
 
 #if !defined(NEFCON_WINMAIN)

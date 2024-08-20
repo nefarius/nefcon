@@ -532,12 +532,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include=".\src\NefConSetup.cpp" />
     <ClCompile Include=".\src\NefConUtil.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include=".\src\framework.h" />
-    <ClInclude Include=".\src\NefConSetup.h" />
     <ClInclude Include=".\src\NefConUtil.h" />
     <ClInclude Include=".\src\colorwin.hpp" />
     <ClInclude Include=".\src\resource.h" />

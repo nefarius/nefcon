@@ -44,9 +44,11 @@
 //
 // Internal
 // 
-#include "NefConSetup.h"
 #include "ColorLogging.hpp"
 
+//
+// neflib
+// 
 #include <nefarius/neflib/UniUtil.hpp>
 #include <nefarius/neflib/MultiStringArray.hpp>
 #include <nefarius/neflib/ClassFilter.hpp>

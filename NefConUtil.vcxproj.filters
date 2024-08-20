@@ -18,9 +18,6 @@
     <ClCompile Include=".\src\NefConUtil.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include=".\src\NefConSetup.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include=".\src\resource.h">
@@ -33,9 +30,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include=".\src\framework.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include=".\src\NefConSetup.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\ColorLogging.hpp">
