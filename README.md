@@ -84,6 +84,10 @@ nefconw --remove-device-node --hardware-id root\HidHide --class-guid 4D36E97D-E3
 nefconw --inf-default-install --inf-path "F:\Downloads\btrfs-1.8\btrfs.inf"
 ```
 
+## `devcon` "emulation"
+
+Currently the [`devcon install INFfile HardwareID`](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-install) command is implemented so you can use `nefcon` as a drop-in replacement for this popular software node device driver installation command! The `/r` flag to auto-reboot is not supported; check the exit code to determine if a reboot is required and inform the user to do so whenever convenient.
+
 ## 3rd party credits
 
 This project uses the following 3rd party resources:
