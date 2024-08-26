@@ -838,7 +838,6 @@ namespace
     void CustomizeEasyLoggingColoredConsole()
     {
         el::Configurations conf;
-        conf.setToDefault();
 
         // Disable STDOUT logging for all log levels
         conf.set(el::Level::Global, el::ConfigurationType::ToStandardOutput, "false");
