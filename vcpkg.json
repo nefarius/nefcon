@@ -5,9 +5,14 @@
   "license": "MIT",
   "supports": "!(arm | uwp)",
   "dependencies": [
+    {
+      "name": "easyloggingpp",
+      "features": [
+        "no-defaultfile"
+      ]
+    },
     "neflib",
     "argh",
-    "easyloggingpp",
     "detours",
     "scope-guard",
     "wil",
