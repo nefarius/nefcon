@@ -185,8 +185,8 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        auto ret = nefarius::devcon::AddDeviceClassFilter(&guid.value(),
-                                                          nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
+        auto ret = AddDeviceClassFilter(&guid.value(),
+                                        nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
 
         if (ret)
         {
