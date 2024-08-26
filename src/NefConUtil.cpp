@@ -785,6 +785,10 @@ int main(int argc, char* argv[])
         '\n';
     std::cout << "    --verbose                          Turn on verbose/diagnostic logging (optional)" << '\n';
     std::cout << '\n';
+    std::cout << "  devcon:" << '\n';
+    std::cout << "    install [INFFile] [HardwareID]     Creates and installs a ROOT-enumerated device and driver" <<
+        '\n';
+    std::cout << '\n';
 
 #pragma endregion
 
