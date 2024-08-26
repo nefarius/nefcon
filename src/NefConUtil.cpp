@@ -3,6 +3,10 @@
 // ReSharper disable CppClangTidyHicppAvoidGoto
 #include "NefConUtil.h"
 
+#include <numeric>
+
+EXTERN_C IMAGE_DOS_HEADER __ImageBase;
+
 using namespace colorwin;
 
 INITIALIZE_EASYLOGGINGPP
@@ -14,12 +18,16 @@ INITIALIZE_EASYLOGGINGPP
 	name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
 processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
+namespace
+{
+    bool IsAdmin(int& errorCode);
 
-static bool IsAdmin(int& errorCode);
+    std::string GetImageBasePath();
 
-using GUIDFromString_t = BOOL(WINAPI*)(_In_ LPCSTR, _Out_ LPGUID);
-
-static bool GUIDFromString(const std::string& input, GUID* guid);
+#if !defined(NEFCON_WINMAIN)
+    void CustomizeEasyLoggingColoredConsole();
+#endif
+}
 
 
 #if defined(NEFCON_WINMAIN)
@@ -47,39 +55,81 @@ int main(int argc, char* argv[])
         "--file-path"
     });
 
-#if defined(NEFCON_WINMAIN)
-    LPWSTR* szArglist;
-    int nArgs;
-    int i;
+    auto cliArgs = nefarius::winapi::cli::GetCommandLineArgs();
 
-    szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
-    if (nullptr == szArglist)
+    if (!cliArgs)
     {
-        std::cout << color(red) << "CommandLineToArgvW failed" << std::endl;
+        std::cout << color(red) << cliArgs.error().getErrorMessageA() << '\n';
         return EXIT_FAILURE;
     }
 
-    std::vector<const char*> argv;
-    std::vector<std::string> narrow;
+#if defined(NEFCON_WINMAIN)
+    int argc = 0;
+    auto argv = cliArgs.value().AsArgv(&argc);
 
-    for (i = 0; i < nArgs; i++)
-    {
-        narrow.push_back(ConvertWideToANSI(std::wstring(szArglist[i])));
-    }
-
-    argv.resize(nArgs);
-    std::transform(narrow.begin(), narrow.end(), argv.begin(), [](const std::string& arg) { return arg.c_str(); });
-
-    argv.push_back(nullptr);
-
-    START_EASYLOGGINGPP(nArgs, &argv[0]);
-    cmdl.parse(nArgs, &argv[0]);
+    START_EASYLOGGINGPP(argc, argv.data());
+    cmdl.parse(argc, argv.data());
 #else
     START_EASYLOGGINGPP(argc, argv);
+    CustomizeEasyLoggingColoredConsole();
     cmdl.parse(argv);
 #endif
 
     el::Logger* logger = el::Loggers::getLogger("default");
+
+    const auto arguments = cliArgs.value().Arguments;
+
+#pragma region Devcon emulation
+
+    //
+    // Before testing any "regular" arguments, see if the user has used "devcon" tool compatible syntax
+    // 
+    if (arguments.size() > 3 && arguments[1] == "install")
+    {
+        int errorCode;
+        if (!IsAdmin(errorCode)) return errorCode;
+
+        const std::wstring infFilePath = nefarius::utilities::ConvertToWide(arguments[2]);
+        const std::wstring hardwareId = nefarius::utilities::ConvertToWide(arguments[3]);
+
+        const auto infClassResult = nefarius::devcon::GetINFClass(infFilePath);
+
+        if (!infClassResult)
+        {
+            logger->error("Failed to get class information from INF file, error: %v",
+                          infClassResult.error().getErrorMessageA());
+            return infClassResult.error().getErrorCode();
+        }
+
+        const auto& infClass = infClassResult.value();
+
+        if (const auto createResult = nefarius::devcon::Create(
+                infClass.ClassName,
+                &infClass.ClassGUID,
+                nefarius::utilities::WideMultiStringArray(hardwareId));
+            !createResult)
+        {
+            logger->error("Failed to create device node, error: %v", createResult.error().getErrorMessageA());
+            return createResult.error().getErrorCode();
+        }
+
+        bool rebootRequired = false;
+
+        if (const auto updateResult = nefarius::devcon::Update(hardwareId, infFilePath, &rebootRequired); !updateResult)
+        {
+            logger->error("Failed to update device node(s) with driver, error: %v",
+                          updateResult.error().getErrorMessageA());
+            return updateResult.error().getErrorCode();
+        }
+
+        logger->info((rebootRequired)
+                         ? "Device and driver installed successfully, but a reboot is required"
+                         : "Device and driver installed successfully"
+        );
+        return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
+    }
+
+#pragma endregion
 
     std::string infPath, binPath, hwId, className, classGuid, serviceName, displayName, position, filePath;
 
@@ -93,73 +143,59 @@ int main(int argc, char* argv[])
         if (!(cmdl({"--position"}) >> position))
         {
             logger->error("Position missing");
-            std::cout << color(red) << "Position missing" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (!(cmdl({"--service-name"}) >> serviceName))
         {
             logger->error("Filter Service Name missing");
-            std::cout << color(red) << "Filter Service Name missing" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (!(cmdl({"--class-guid"}) >> classGuid))
         {
             logger->error("Device Class GUID missing");
-            std::cout << color(red) << "Device Class GUID missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        GUID clID;
+        const auto guid = nefarius::winapi::GUIDFromString(classGuid);
 
-        if (!GUIDFromString(classGuid, &clID))
+        if (!guid)
         {
             logger->error(
                 "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
-            std::cout << color(red) <<
-                "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                << std::endl;
             return EXIT_FAILURE;
         }
 
-        devcon::DeviceClassFilterPosition::Value pos;
+        nefarius::devcon::DeviceClassFilterPosition pos;
 
         if (position == "upper")
         {
             logger->verbose(1, "Modifying upper filters");
-            pos = devcon::DeviceClassFilterPosition::Upper;
+            pos = nefarius::devcon::DeviceClassFilterPosition::Upper;
         }
         else if (position == "lower")
         {
             logger->verbose(1, "Modifying lower filters");
-            pos = devcon::DeviceClassFilterPosition::Lower;
+            pos = nefarius::devcon::DeviceClassFilterPosition::Lower;
         }
         else
         {
             logger->error("Unsupported position received. Valid values include: upper, lower");
-            std::cout << color(red) << "Unsupported position received. Valid values include: upper, lower" << std::endl;
             return EXIT_FAILURE;
         }
 
-        auto ret = add_device_class_filter(&clID, ConvertAnsiToWide(serviceName), pos);
+        auto ret = AddDeviceClassFilter(&guid.value(),
+                                        nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
 
         if (ret)
         {
             logger->warn("Filter enabled. Reconnect affected devices or reboot system to apply changes!");
-            std::cout << color(yellow) <<
-                "Filter enabled. Reconnect affected devices or reboot system to apply changes!"
-                << std::endl;
-
             return EXIT_SUCCESS;
         }
 
-        logger->error("Failed to modify filter value, error: %v",
-                      winapi::GetLastErrorStdStr());
-        std::cout << color(red) <<
-            "Failed to modify filter value, error: "
-            << winapi::GetLastErrorStdStr() << std::endl;
-        return GetLastError();
+        logger->error("Failed to modify filter value, error: %v", ret.error().getErrorMessageA());
+        return ret.error().getErrorCode();
     }
 
     if (cmdl[{"--remove-class-filter"}])
@@ -170,73 +206,58 @@ int main(int argc, char* argv[])
         if (!(cmdl({"--position"}) >> position))
         {
             logger->error("Position missing");
-            std::cout << color(red) << "Position missing" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (!(cmdl({"--service-name"}) >> serviceName))
         {
             logger->error("Filter Service Name missing");
-            std::cout << color(red) << "Filter Service Name missing" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (!(cmdl({"--class-guid"}) >> classGuid))
         {
             logger->error("Device Class GUID missing");
-            std::cout << color(red) << "Device Class GUID missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        GUID clID;
+        const auto guid = nefarius::winapi::GUIDFromString(classGuid);
 
-        if (!GUIDFromString(classGuid, &clID))
+        if (!guid)
         {
             logger->error(
                 "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
-            std::cout << color(red) <<
-                "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                << std::endl;
             return EXIT_FAILURE;
         }
 
-        devcon::DeviceClassFilterPosition::Value pos;
+        nefarius::devcon::DeviceClassFilterPosition pos;
 
         if (position == "upper")
         {
             logger->verbose(1, "Modifying upper filters");
-            pos = devcon::DeviceClassFilterPosition::Upper;
+            pos = nefarius::devcon::DeviceClassFilterPosition::Upper;
         }
         else if (position == "lower")
         {
             logger->verbose(1, "Modifying lower filters");
-            pos = devcon::DeviceClassFilterPosition::Lower;
+            pos = nefarius::devcon::DeviceClassFilterPosition::Lower;
         }
         else
         {
             logger->error("Unsupported position received. Valid values include: upper, lower");
-            std::cout << color(red) << "Unsupported position received. Valid values include: upper, lower" << std::endl;
             return EXIT_FAILURE;
         }
 
-        auto ret = remove_device_class_filter(&clID, ConvertAnsiToWide(serviceName), pos);
+        auto ret = RemoveDeviceClassFilter(&guid.value(), nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
 
         if (ret)
         {
             logger->warn("Filter enabled. Reconnect affected devices or reboot system to apply changes!");
-            std::cout << color(yellow) <<
-                "Filter enabled. Reconnect affected devices or reboot system to apply changes!"
-                << std::endl;
-
             return EXIT_SUCCESS;
         }
 
-        logger->error("Failed to modify filter value, error: %v",
-                      winapi::GetLastErrorStdStr());
-        std::cout << color(red) <<
-            "Failed to modify filter value, error: "
-            << winapi::GetLastErrorStdStr() << std::endl;
-        return GetLastError();
+        logger->error("Failed to modify filter value, error: %v", ret.error().getErrorMessageA());
+        return ret.error().getErrorCode();
     }
 
 #pragma endregion
@@ -253,14 +274,12 @@ int main(int argc, char* argv[])
         if (infPath.empty())
         {
             logger->error("INF path missing");
-            std::cout << color(red) << "INF path missing" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (_access(infPath.c_str(), 0) != 0)
         {
             logger->error("The given INF file doesn't exist, is the path correct?");
-            std::cout << color(red) << "The given INF file doesn't exist, is the path correct?" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -269,24 +288,19 @@ int main(int argc, char* argv[])
         if (attribs & FILE_ATTRIBUTE_DIRECTORY)
         {
             logger->error("The given INF path is a directory, not a file");
-            std::cout << color(red) << "The given INF path is a directory, not a file" << std::endl;
             return EXIT_FAILURE;
         }
 
         bool rebootRequired;
 
-        if (!devcon::install_driver(ConvertAnsiToWide(infPath), &rebootRequired))
+        if (const auto result = nefarius::devcon::InstallDriver(nefarius::utilities::ConvertAnsiToWide(infPath),
+                                                                &rebootRequired); !result)
         {
-            logger->error("Failed to install driver, error: %v",
-                          winapi::GetLastErrorStdStr());
-            std::cout << color(red) <<
-                "Failed to install driver, error: "
-                << winapi::GetLastErrorStdStr() << std::endl;
-            return GetLastError();
+            logger->error("Failed to install driver, error: %v", result.error().getErrorMessageA());
+            return result.error().getErrorCode();
         }
 
         logger->info("Driver installed successfully");
-        std::cout << color(green) << "Driver installed successfully" << std::endl;
 
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
     }
@@ -301,14 +315,12 @@ int main(int argc, char* argv[])
         if (infPath.empty())
         {
             logger->error("INF path missing");
-            std::cout << color(red) << "INF path missing" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (_access(infPath.c_str(), 0) != 0)
         {
             logger->error("The given INF file doesn't exist, is the path correct?");
-            std::cout << color(red) << "The given INF file doesn't exist, is the path correct?" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -317,24 +329,19 @@ int main(int argc, char* argv[])
         if (attribs & FILE_ATTRIBUTE_DIRECTORY)
         {
             logger->error("The given INF path is a directory, not a file");
-            std::cout << color(red) << "The given INF path is a directory, not a file" << std::endl;
             return EXIT_FAILURE;
         }
 
         bool rebootRequired;
 
-        if (!devcon::uninstall_driver(ConvertAnsiToWide(infPath), &rebootRequired))
+        if (const auto result = nefarius::devcon::UninstallDriver(nefarius::utilities::ConvertAnsiToWide(infPath),
+                                                                  &rebootRequired); !result)
         {
-            logger->error("Failed to uninstall driver, error: %v",
-                          winapi::GetLastErrorStdStr());
-            std::cout << color(red) <<
-                "Failed to uninstall driver, error: "
-                << winapi::GetLastErrorStdStr() << std::endl;
-            return GetLastError();
+            logger->error("Failed to uninstall driver, error: %v", result.error().getErrorMessageA());
+            return result.error().getErrorCode();
         }
 
         logger->info("Driver uninstalled successfully");
-        std::cout << color(green) << "Driver uninstalled successfully" << std::endl;
 
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
     }
@@ -349,14 +356,12 @@ int main(int argc, char* argv[])
         if (binPath.empty())
         {
             logger->error("Binary path missing");
-            std::cout << color(red) << "Binary path missing" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (_access(binPath.c_str(), 0) != 0)
         {
             logger->error("The given binary file doesn't exist, is the path correct?");
-            std::cout << color(red) << "The given binary file doesn't exist, is the path correct?" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -365,14 +370,12 @@ int main(int argc, char* argv[])
         if (attribs & FILE_ATTRIBUTE_DIRECTORY)
         {
             logger->error("The given binary path is a directory, not a file");
-            std::cout << color(red) << "The given binary path is a directory, not a file" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (!(cmdl({"--service-name"}) >> serviceName))
         {
             logger->error("Service name missing");
-            std::cout << color(red) << "Service name missing" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -381,22 +384,17 @@ int main(int argc, char* argv[])
         if (displayName.empty())
         {
             logger->error("Display name missing");
-            std::cout << color(red) << "Display name missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        if (!winapi::CreateDriverService(serviceName.c_str(), displayName.c_str(), binPath.c_str()))
+        if (const auto result = nefarius::winapi::services::CreateDriverService(serviceName, displayName, binPath); !
+            result)
         {
-            logger->error("Failed to create driver service, error: %v",
-                          winapi::GetLastErrorStdStr());
-            std::cout << color(red) <<
-                "Failed to create driver service, error: "
-                << winapi::GetLastErrorStdStr() << std::endl;
-            return GetLastError();
+            logger->error("Failed to create driver service, error: %v", result.error().getErrorMessageA());
+            return result.error().getErrorCode();
         }
 
         logger->info("Driver service created successfully");
-        std::cout << color(green) << "Driver service created successfully" << std::endl;
 
         return EXIT_SUCCESS;
     }
@@ -409,22 +407,16 @@ int main(int argc, char* argv[])
         if (!(cmdl({"--service-name"}) >> serviceName))
         {
             logger->error("Service name missing");
-            std::cout << color(red) << "Service name missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        if (!winapi::DeleteDriverService(serviceName.c_str()))
+        if (const auto result = nefarius::winapi::services::DeleteDriverService(serviceName); !result)
         {
-            logger->error("Failed to remove driver service, error: %v",
-                          winapi::GetLastErrorStdStr());
-            std::cout << color(red) <<
-                "Failed to remove driver service, error: "
-                << winapi::GetLastErrorStdStr() << std::endl;
-            return GetLastError();
+            logger->error("Failed to remove driver service, error: %v", result.error().getErrorMessageA());
+            return result.error().getErrorCode();
         }
 
         logger->info("Driver service removed successfully");
-        std::cout << color(green) << "Driver service removed successfully" << std::endl;
 
         return EXIT_SUCCESS;
     }
@@ -437,50 +429,41 @@ int main(int argc, char* argv[])
         if (!(cmdl({"--hardware-id"}) >> hwId))
         {
             logger->error("Hardware ID missing");
-            std::cout << color(red) << "Hardware ID missing" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (!(cmdl({"--class-name"}) >> className))
         {
             logger->error("Device Class Name missing");
-            std::cout << color(red) << "Device Class Name missing" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (!(cmdl({"--class-guid"}) >> classGuid))
         {
             logger->error("Device Class GUID missing");
-            std::cout << color(red) << "Device Class GUID missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        GUID clID;
+        const auto guid = nefarius::winapi::GUIDFromString(classGuid);
 
-        if (!GUIDFromString(classGuid, &clID))
+        if (!guid)
         {
             logger->error(
                 "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
-            std::cout << color(red) <<
-                "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                << std::endl;
             return EXIT_FAILURE;
         }
 
-        auto ret = devcon::create(ConvertAnsiToWide(className), &clID, ConvertAnsiToWide(hwId));
+        auto ret = nefarius::devcon::Create(nefarius::utilities::ConvertAnsiToWide(className), &guid.value(),
+                                            nefarius::utilities::WideMultiStringArray(
+                                                nefarius::utilities::ConvertAnsiToWide(hwId)));
 
         if (!ret)
         {
-            logger->error("Failed to create device node, error: %v",
-                          winapi::GetLastErrorStdStr());
-            std::cout << color(red) <<
-                "Failed to create device node, error: "
-                << winapi::GetLastErrorStdStr() << std::endl;
-            return GetLastError();
+            logger->error("Failed to create device node, error: %v", ret.error().getErrorMessageA());
+            return ret.error().getErrorCode();
         }
 
         logger->info("Device node created successfully");
-        std::cout << color(green) << "Device node created successfully" << std::endl;
 
         return EXIT_SUCCESS;
     }
@@ -495,45 +478,40 @@ int main(int argc, char* argv[])
         if (!(cmdl({"--hardware-id"}) >> hwId))
         {
             logger->error("Hardware ID missing");
-            std::cout << color(red) << "Hardware ID missing" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (!(cmdl({"--class-guid"}) >> classGuid))
         {
             logger->error("Device Class GUID missing");
-            std::cout << color(red) << "Device Class GUID missing" << std::endl;
             return EXIT_FAILURE;
         }
 
-        GUID clID;
+        const auto guid = nefarius::winapi::GUIDFromString(classGuid);
 
-        if (!GUIDFromString(classGuid, &clID))
+        if (!guid)
         {
             logger->error(
                 "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
-            std::cout << color(red) <<
-                "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                << std::endl;
             return EXIT_FAILURE;
         }
 
         bool rebootRequired;
 
-        auto ret = devcon::uninstall_device_and_driver(&clID, ConvertAnsiToWide(hwId), &rebootRequired);
+        auto results = nefarius::devcon::UninstallDeviceAndDriver(&guid.value(),
+                                                                  nefarius::utilities::ConvertAnsiToWide(hwId),
+                                                                  &rebootRequired);
 
-        if (!ret)
+        for (const auto& item : results)
         {
-            logger->error("Failed to delete device node, error: %v",
-                          winapi::GetLastErrorStdStr());
-            std::cout << color(red) <<
-                "Failed to delete device node, error: "
-                << winapi::GetLastErrorStdStr() << std::endl;
-            return GetLastError();
+            if (!item)
+            {
+                logger->error("Failed to delete device node, error: %v", item.error().getErrorMessageA());
+                return item.error().getErrorCode();
+            }
         }
 
         logger->info("Device and driver removed successfully");
-        std::cout << color(green) << "Device and driver removed successfully" << std::endl;
 
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
     }
@@ -550,14 +528,12 @@ int main(int argc, char* argv[])
         if (infPath.empty())
         {
             logger->error("INF path missing");
-            std::cout << color(red) << "INF path missing" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (_access(infPath.c_str(), 0) != 0)
         {
             logger->error("The given INF file doesn't exist, is the path correct?");
-            std::cout << color(red) << "The given INF file doesn't exist, is the path correct?" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -566,31 +542,25 @@ int main(int argc, char* argv[])
         if (attribs & FILE_ATTRIBUTE_DIRECTORY)
         {
             logger->error("The given INF path is a directory, not a file");
-            std::cout << color(red) << "The given INF path is a directory, not a file" << std::endl;
             return EXIT_FAILURE;
         }
 
         bool rebootRequired = false;
 
-        if (!devcon::inf_default_install(ConvertAnsiToWide(infPath), &rebootRequired))
+        if (const auto result = nefarius::devcon::InfDefaultInstall(nefarius::utilities::ConvertAnsiToWide(infPath),
+                                                                    &rebootRequired); !result)
         {
-            logger->error("Failed to install INF file, error: %v",
-                          winapi::GetLastErrorStdStr());
-            std::cout << color(red) <<
-                "Failed to install INF file, error: "
-                << winapi::GetLastErrorStdStr() << std::endl;
-            return GetLastError();
+            logger->error("Failed to install INF file, error: %v", result.error().getErrorMessageA());
+            return result.error().getErrorCode();
         }
 
         if (!rebootRequired)
         {
             logger->info("INF file installed successfully");
-            std::cout << color(green) << "INF file installed successfully" << std::endl;
         }
         else
         {
             logger->info("INF file installed successfully, but a reboot is required");
-            std::cout << color(yellow) << "INF file installed successfully, but a reboot is required" << std::endl;
         }
 
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
@@ -606,14 +576,12 @@ int main(int argc, char* argv[])
         if (infPath.empty())
         {
             logger->error("INF path missing");
-            std::cout << color(red) << "INF path missing" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (_access(infPath.c_str(), 0) != 0)
         {
             logger->error("The given INF file doesn't exist, is the path correct?");
-            std::cout << color(red) << "The given INF file doesn't exist, is the path correct?" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -622,31 +590,25 @@ int main(int argc, char* argv[])
         if (attribs & FILE_ATTRIBUTE_DIRECTORY)
         {
             logger->error("The given INF path is a directory, not a file");
-            std::cout << color(red) << "The given INF path is a directory, not a file" << std::endl;
             return EXIT_FAILURE;
         }
 
         bool rebootRequired = false;
 
-        if (!devcon::inf_default_uninstall(ConvertAnsiToWide(infPath), &rebootRequired))
+        if (const auto result = nefarius::devcon::InfDefaultUninstall(nefarius::utilities::ConvertAnsiToWide(infPath),
+                                                                      &rebootRequired); !result)
         {
-            logger->error("Failed to uninstall INF file, error: %v",
-                          winapi::GetLastErrorStdStr());
-            std::cout << color(red) <<
-                "Failed to uninstall INF file, error: "
-                << winapi::GetLastErrorStdStr() << std::endl;
-            return GetLastError();
+            logger->error("Failed to uninstall INF file, error: %v", result.error().getErrorMessageA());
+            return result.error().getErrorCode();
         }
 
         if (!rebootRequired)
         {
             logger->info("INF file uninstalled successfully");
-            std::cout << color(green) << "INF file uninstalled successfully" << std::endl;
         }
         else
         {
             logger->info("INF file uninstalled successfully, but a reboot is required");
-            std::cout << color(yellow) << "INF file uninstalled successfully, but a reboot is required" << std::endl;
         }
 
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
@@ -666,14 +628,12 @@ int main(int argc, char* argv[])
         if (filePath.empty())
         {
             logger->error("File path missing");
-            std::cout << color(red) << "File path missing" << std::endl;
             return EXIT_FAILURE;
         }
 
         if (_access(filePath.c_str(), 0) != 0)
         {
             logger->error("The given file path doesn't exist, is the path correct?");
-            std::cout << color(red) << "The given file path doesn't exist, is the path correct?" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -682,7 +642,6 @@ int main(int argc, char* argv[])
         if (attribs & FILE_ATTRIBUTE_DIRECTORY)
         {
             logger->error("The given file path is a directory, not a file");
-            std::cout << color(red) << "The given file path is a directory, not a file" << std::endl;
             return EXIT_FAILURE;
         }
 
@@ -693,14 +652,10 @@ int main(int argc, char* argv[])
         if (!ret && GetLastError() == ERROR_ACCESS_DENIED)
         {
             // ...take ownership of protected file (e.g. within the system directories)...
-            if (!winapi::TakeFileOwnership(logger, ConvertAnsiToWide(filePath).c_str()))
+            if (const auto result = nefarius::winapi::fs::TakeFileOwnership(filePath); !result)
             {
-                logger->error("Failed to take ownership of file, error: %v",
-                              winapi::GetLastErrorStdStr());
-                std::cout << color(red) <<
-                    "Failed to take ownership of file, error: "
-                    << winapi::GetLastErrorStdStr() << std::endl;
-                return GetLastError();
+                logger->error("Failed to take ownership of file, error: %v", result.error().getErrorMessageA());
+                return result.error().getErrorCode();
             }
 
             // ...and try again
@@ -710,15 +665,11 @@ int main(int argc, char* argv[])
         if (!ret)
         {
             logger->error("Failed to register file for removal, error: %v",
-                          winapi::GetLastErrorStdStr());
-            std::cout << color(red) <<
-                "Failed to register file for removal, error: "
-                << winapi::GetLastErrorStdStr() << std::endl;
+                          nefarius::utilities::Win32Error("MoveFileExA").getErrorMessageA());
             return GetLastError();
         }
 
         logger->info("File removal registered successfully");
-        std::cout << color(green) << "File removal registered successfully" << std::endl;
 
         return EXIT_SUCCESS;
     }
@@ -730,24 +681,54 @@ int main(int argc, char* argv[])
         if (hwId.empty())
         {
             logger->error("Hardware ID missing");
-            std::cout << color(red) << "Hardware ID missing" << std::endl;
             return EXIT_FAILURE;
         }
-        if (!devcon::find_by_hwid(ConvertAnsiToWide(hwId)))
+
+        const auto findResult = nefarius::devcon::FindByHwId(nefarius::utilities::ConvertAnsiToWide(hwId));
+
+        if (!findResult)
+        {
+            logger->error("Failed to register search for devices, error: %v", findResult.error().getErrorMessageA());
+            return findResult.error().getErrorCode();
+        }
+
+        if (findResult.value().empty())
         {
             return ERROR_NOT_FOUND;
         }
+
+        for (const auto& [HardwareIds, Name, Version] : findResult.value())
+        {
+            std::wstring idValue = std::accumulate(
+                std::begin(HardwareIds), std::end(HardwareIds), std::wstring(),
+                [](const std::wstring& ss, const std::wstring& s)
+                {
+                    return ss.empty() ? s : ss + L", " + s;
+                });
+
+            logger->info("Hardware IDs: %v", idValue);
+            logger->info("Name: %v", Name);
+            logger->info("Version: %v.%v.%v.%v",
+                         std::to_wstring(Version.Major),
+                         std::to_wstring(Version.Minor),
+                         std::to_wstring(Version.Build),
+                         std::to_wstring(Version.Private)
+            );
+        }
+
         return EXIT_SUCCESS;
     }
 
 #pragma endregion
 
+#pragma region Version
+
     if (cmdl[{"-v", "--version"}])
     {
         std::cout << "nefcon version " <<
-            winapi::GetVersionFromFile(winapi::GetImageBasePath())
+            to_string(nefarius::winapi::fs::GetProductVersionFromFile(GetImageBasePath()).value())
             << " (C) Nefarius Software Solutions e.U."
-            << std::endl;
+            << '\n';
         return EXIT_SUCCESS;
     }
 
@@ -758,104 +739,117 @@ int main(int argc, char* argv[])
 #if defined(NEFCON_WINMAIN)
     std::cout << "usage: .\\nefconw [options] [logging]" << std::endl << std::endl;
 #else
-    std::cout << "usage: .\\nefconc [options] [logging]" << std::endl << std::endl;
+    std::cout << "usage: .\\nefconc [options] [logging]" << '\n' << '\n';
 #endif
-    std::cout << "  options:" << std::endl;
-    std::cout << "    --install-driver           Invoke the installation of a given PNP driver" << std::endl;
-    std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << std::endl;
-    std::cout << "    --uninstall-driver         Invoke the removal of a given PNP driver" << std::endl;
-    std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << std::endl;
-    std::cout << "    --create-device-node       Create a new ROOT enumerated virtual device" << std::endl;
-    std::cout << "      --hardware-id            Hardware ID of the new device (required)" << std::endl;
-    std::cout << "      --class-name             Device Class Name of the new device (required)" << std::endl;
-    std::cout << "      --class-guid             Device Class GUID of the new device (required)" << std::endl;
-    std::cout << "    --remove-device-node       Removes a device and its driver" << std::endl;
-    std::cout << "      --hardware-id            Hardware ID of the device (required)" << std::endl;
-    std::cout << "      --class-guid             Device Class GUID of the device (required)" << std::endl;
-    std::cout << "    --add-class-filter         Adds a service to a device class' filter collection" << std::endl;
-    std::cout << "      --position               Which filter to modify (required)" << std::endl;
-    std::cout << "                                 Valid values include: upper|lower" << std::endl;
-    std::cout << "      --service-name           The driver service name to insert (required)" << std::endl;
-    std::cout << "      --class-guid             Device Class GUID to modify (required)" << std::endl;
-    std::cout << "    --remove-class-filter      Removes a service to a device class' filter collection" << std::endl;
-    std::cout << "      --position               Which filter to modify (required)" << std::endl;
-    std::cout << "                                 Valid values include: upper|lower" << std::endl;
-    std::cout << "      --service-name           The driver service name to insert (required)" << std::endl;
-    std::cout << "      --class-guid             Device Class GUID to modify (required)" << std::endl;
-    std::cout << "    --create-driver-service    Creates a new service with a kernel driver as binary" << std::endl;
-    std::cout << "      --bin-path               Absolute path to the .sys file (required)" << std::endl;
-    std::cout << "      --service-name           The driver service name to create (required)" << std::endl;
-    std::cout << "      --display-name           The friendly name of the service (required)" << std::endl;
-    std::cout << "    --remove-driver-service    Removes an existing kernel driver service" << std::endl;
-    std::cout << "      --service-name           The driver service name to remove (required)" << std::endl;
-    std::cout << "    --inf-default-install      Installs an INF file with a [DefaultInstall] section" << std::endl;
-    std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << std::endl;
-    std::cout << "    --inf-default-uninstall    Uninstalls an INF file with a [DefaultUninstall] section" << std::endl;
-    std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << std::endl;
-    std::cout << "    --delete-file-on-reboot    Marks a given file to get deleted on next reboot" << std::endl;
-    std::cout << "      --file-path              The absolute path of the file to remove (required)" << std::endl;
-    std::cout << "    --find-hwid                Shows one or more devices matching a partial Hardware ID" << std::endl;
+    std::cout << "  options:" << '\n';
+    std::cout << "    --install-driver           Invoke the installation of a given PNP driver" << '\n';
+    std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << '\n';
+    std::cout << "    --uninstall-driver         Invoke the removal of a given PNP driver" << '\n';
+    std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << '\n';
+    std::cout << "    --create-device-node       Create a new ROOT enumerated virtual device" << '\n';
+    std::cout << "      --hardware-id            Hardware ID of the new device (required)" << '\n';
+    std::cout << "      --class-name             Device Class Name of the new device (required)" << '\n';
+    std::cout << "      --class-guid             Device Class GUID of the new device (required)" << '\n';
+    std::cout << "    --remove-device-node       Removes a device and its driver" << '\n';
+    std::cout << "      --hardware-id            Hardware ID of the device (required)" << '\n';
+    std::cout << "      --class-guid             Device Class GUID of the device (required)" << '\n';
+    std::cout << "    --add-class-filter         Adds a service to a device class' filter collection" << '\n';
+    std::cout << "      --position               Which filter to modify (required)" << '\n';
+    std::cout << "                                 Valid values include: upper|lower" << '\n';
+    std::cout << "      --service-name           The driver service name to insert (required)" << '\n';
+    std::cout << "      --class-guid             Device Class GUID to modify (required)" << '\n';
+    std::cout << "    --remove-class-filter      Removes a service to a device class' filter collection" << '\n';
+    std::cout << "      --position               Which filter to modify (required)" << '\n';
+    std::cout << "                                 Valid values include: upper|lower" << '\n';
+    std::cout << "      --service-name           The driver service name to insert (required)" << '\n';
+    std::cout << "      --class-guid             Device Class GUID to modify (required)" << '\n';
+    std::cout << "    --create-driver-service    Creates a new service with a kernel driver as binary" << '\n';
+    std::cout << "      --bin-path               Absolute path to the .sys file (required)" << '\n';
+    std::cout << "      --service-name           The driver service name to create (required)" << '\n';
+    std::cout << "      --display-name           The friendly name of the service (required)" << '\n';
+    std::cout << "    --remove-driver-service    Removes an existing kernel driver service" << '\n';
+    std::cout << "      --service-name           The driver service name to remove (required)" << '\n';
+    std::cout << "    --inf-default-install      Installs an INF file with a [DefaultInstall] section" << '\n';
+    std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << '\n';
+    std::cout << "    --inf-default-uninstall    Uninstalls an INF file with a [DefaultUninstall] section" << '\n';
+    std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << '\n';
+    std::cout << "    --delete-file-on-reboot    Marks a given file to get deleted on next reboot" << '\n';
+    std::cout << "      --file-path              The absolute path of the file to remove (required)" << '\n';
+    std::cout << "    --find-hwid                Shows one or more devices matching a partial Hardware ID" << '\n';
     std::cout << "      ---hardware-id           (Partial) Hardware ID of the device to match against (required)" <<
-        std::endl;
-    std::cout << "    -v, --version              Display version of this utility" << std::endl;
-    std::cout << std::endl;
-    std::cout << "  logging:" << std::endl;
+        '\n';
+    std::cout << "    -v, --version              Display version of this utility" << '\n';
+    std::cout << '\n';
+    std::cout << "  logging:" << '\n';
     std::cout << "    --default-log-file=.\\log.txt       Write details of execution to a log file (optional)" <<
-        std::endl;
-    std::cout << "    --verbose                          Turn on verbose/diagnostic logging (optional)" << std::endl;
-    std::cout << std::endl;
+        '\n';
+    std::cout << "    --verbose                          Turn on verbose/diagnostic logging (optional)" << '\n';
+    std::cout << '\n';
 
 #pragma endregion
 
     return EXIT_SUCCESS;
 }
 
-static bool IsAdmin(int& errorCode)
+namespace
 {
-    el::Logger* logger = el::Loggers::getLogger("default");
-    BOOL isAdmin = FALSE;
-
-    if (winapi::IsAppRunningAsAdminMode(&isAdmin) != ERROR_SUCCESS)
+    bool IsAdmin(int& errorCode)
     {
-        logger->error("Failed to determine elevation status, error: ",
-                      winapi::GetLastErrorStdStr());
-        std::cout << color(red) <<
-            "Failed to determine elevation status, error: "
-            << winapi::GetLastErrorStdStr() << std::endl;
-        errorCode = EXIT_FAILURE;
-        return false;
-    }
+        el::Logger* logger = el::Loggers::getLogger("default");
 
-    if (!isAdmin)
-    {
-        logger->error(
-            "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled.");
-        std::cout << color(red) <<
-            "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled."
-            << std::endl;
-        errorCode = EXIT_FAILURE;
-        return false;
-    }
+        const auto isAdmin = nefarius::winapi::security::IsAppRunningAsAdminMode();
 
-    return true;
-}
-
-static bool GUIDFromString(const std::string& input, GUID* guid)
-{
-    // try without brackets...
-    if (UuidFromStringA(RPC_CSTR(input.data()), guid) == RPC_S_INVALID_STRING_UUID)
-    {
-        const HMODULE shell32 = LoadLibraryA("Shell32.dll");
-
-        if (shell32 == nullptr)
+        if (!isAdmin)
+        {
+            logger->error("Failed to determine elevation status, error: ", isAdmin.error().getErrorMessageA());
+            errorCode = EXIT_FAILURE;
             return false;
+        }
 
-        const auto pFnGUIDFromString = reinterpret_cast<GUIDFromString_t>(
-            GetProcAddress(shell32, MAKEINTRESOURCEA(703)));
+        if (!isAdmin.value())
+        {
+            logger->error(
+                "This command requires elevated privileges. Please run as Administrator and make sure the UAC is enabled.");
+            errorCode = EXIT_FAILURE;
+            return false;
+        }
 
-        // ...finally try with brackets
-        return pFnGUIDFromString(input.c_str(), guid);
+        return true;
     }
 
-    return true;
+    std::string GetImageBasePath()
+    {
+        char myPath[MAX_PATH + 1] = {};
+
+        GetModuleFileNameA(
+            reinterpret_cast<HINSTANCE>(&__ImageBase),
+            myPath,
+            MAX_PATH + 1
+        );
+
+        return {myPath};
+    }
+
+#if !defined(NEFCON_WINMAIN)
+    void CustomizeEasyLoggingColoredConsole()
+    {
+        el::Configurations conf;
+        conf.setToDefault();
+
+        // Disable STDOUT logging for all log levels
+        conf.set(el::Level::Global, el::ConfigurationType::ToStandardOutput, "false");
+
+        el::Loggers::addFlag(el::LoggingFlag::ImmediateFlush);
+
+        // Register the custom log dispatch callback
+        el::Helpers::installLogDispatchCallback<ConsoleColorLogDispatchCallback>("ConsoleColorLogDispatchCallback");
+
+        // Enable the custom log dispatch callback
+        el::Helpers::logDispatchCallback<ConsoleColorLogDispatchCallback>("ConsoleColorLogDispatchCallback")->
+            setEnabled(true);
+
+        // Apply the configuration
+        el::Loggers::reconfigureLogger("default", conf);
+    }
+#endif
 }

@@ -14,5 +14,3 @@
 
 #include <initguid.h>
 #include <winioctl.h>
-
-#include "LibraryHelper.hpp"

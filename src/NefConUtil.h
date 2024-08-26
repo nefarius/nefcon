@@ -27,11 +27,8 @@
 #include <vector>
 #include <string>
 #include <optional>
-
-//
-// CLI argument parser
-// 
-#include <argh.h>
+#include <expected>
+#include <variant>
 
 //
 // Add some colors to console
@@ -39,13 +36,26 @@
 #include "colorwin.hpp"
 
 //
-// Logging
+// Vcpkg Packages
 // 
+#include <argh.h>
 #include <easylogging++.h>
 
 //
-// Setup helpers
+// Internal
 // 
-#include "Devcon.h"
-#include "NefConSetup.h"
-#include "UniUtil.h"
+#include "ColorLogging.hpp"
+
+//
+// neflib
+// 
+#include <nefarius/neflib/UniUtil.hpp>
+#include <nefarius/neflib/MultiStringArray.hpp>
+#include <nefarius/neflib/ClassFilter.hpp>
+#include <nefarius/neflib/Win32Error.hpp>
+#include <nefarius/neflib/HDEVINFOHandleGuard.hpp>
+#include <nefarius/neflib/HKEYHandleGuard.hpp>
+#include <nefarius/neflib/INFHandleGuard.hpp>
+#include <nefarius/neflib/LibraryHelper.hpp>
+#include <nefarius/neflib/Devcon.hpp>
+#include <nefarius/neflib/MiscWinApi.hpp>

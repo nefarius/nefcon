@@ -18,12 +18,6 @@
     <ClCompile Include=".\src\NefConUtil.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include=".\src\Devcon.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include=".\src\NefConSetup.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include=".\src\resource.h">
@@ -35,19 +29,10 @@
     <ClInclude Include=".\src\NefConUtil.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include=".\src\Devcon.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include=".\src\framework.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include=".\src\LibraryHelper.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include=".\src\NefConSetup.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include=".\src\UniUtil.h">
+    <ClInclude Include="src\ColorLogging.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -58,5 +43,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="vcpkg.json" />
+    <None Include="vcpkg-configuration.json" />
   </ItemGroup>
 </Project>
