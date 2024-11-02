@@ -3,12 +3,13 @@
     {
       "kind": "git",
       "repository": "https://github.com/nefarius/nefarius-vcpkg-registry.git",
-      "baseline": "a012f87f807c6c45a372b5a3a2dcf562a356f1dc",
+      "baseline": "a51cec12849ac113d4b8436c80bcf0b989668f90",
       "packages": [ "neflib" ]
     }
   ],
   "default-registry": {
-    "kind": "builtin",
-    "baseline": "2024.07.12"
+    "kind": "git",
+    "repository": "https://github.com/microsoft/vcpkg",
+    "baseline": "3508985146f1b1d248c67ead13f8f54be5b4f5da"
   }
 }
