@@ -50,7 +50,7 @@ jobs:
       run: msbuild /m /p:Configuration="Release (WinMain)" /p:Platform=${{env.BUILD_PLATFORM}} ${{env.SOLUTION_FILE_PATH}}
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: nefcon
         path: ./bin
