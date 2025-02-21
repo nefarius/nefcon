@@ -757,7 +757,13 @@ int main(int argc, char* argv[])
             logger->error(
                 "GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
             return EXIT_FAILURE;
-        }        
+        }
+
+        int errorCode;
+        if (!IsAdmin(errorCode))
+        {
+            return errorCode;
+        }
 
         if (auto ret = nefarius::winapi::security::AdjustProcessPrivileges(); !ret)
         {
@@ -781,13 +787,13 @@ int main(int argc, char* argv[])
         )))
         {
             auto error = nefarius::utilities::Win32Error(err);
-            logger->error("Failed to {} local service, error: %v",
+            logger->error("Failed to %v local service, error: %v",
                           enable ? "enable" : "disable",
                           error.getErrorMessageA());
             return error.getErrorCode();
         }
 
-        logger->info("Service {} successfully", enable ? "enabled" : "disabled");
+        logger->info("Service %v successfully", enable ? "enabled" : "disabled");
 
         return EXIT_SUCCESS;
     }
