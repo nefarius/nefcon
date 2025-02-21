@@ -29,11 +29,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2.0.0
+
+    - name: Restore vcpkg packages
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: vcpkg integrate install
 
     - name: Build Console Edition
       working-directory: ${{env.GITHUB_WORKSPACE}}
