@@ -12,6 +12,7 @@
 #include <rpc.h>
 #include <shellapi.h>
 #include <io.h>
+#include <bluetoothapis.h>
 
 //
 // Device class interfaces
@@ -45,6 +46,7 @@
 // Internal
 // 
 #include "ColorLogging.hpp"
+#include "LibraryHelper.hpp"
 
 //
 // neflib
