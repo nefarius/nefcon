@@ -851,6 +851,12 @@ int main(int argc, char* argv[])
     std::cout << "    --find-hwid                Shows one or more devices matching a partial Hardware ID" << '\n';
     std::cout << "      ---hardware-id           (Partial) Hardware ID of the device to match against (required)" <<
         '\n';
+    std::cout << "    --enable-bluetooth-service   Enables a local Bluetooth service" << '\n';
+    std::cout << "      --service-name             The service name" << '\n';
+    std::cout << "      --service-guid             The service GUID" << '\n';
+    std::cout << "    --disable-bluetooth-service  Disables a local Bluetooth service" << '\n';
+    std::cout << "      --service-name             The service name" << '\n';
+    std::cout << "      --service-guid             The service GUID" << '\n';
     std::cout << "    -v, --version              Display version of this utility" << '\n';
     std::cout << '\n';
     std::cout << "  logging:" << '\n';
