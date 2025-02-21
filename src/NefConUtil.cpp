@@ -49,10 +49,10 @@ int main(int argc, char* argv[])
         "--class-guid",
         "--service-name",
         "--position",
-        "--service-name",
         "--display-name",
         "--bin-path",
-        "--file-path"
+        "--file-path",
+        "--service-guid"
     });
 
     auto cliArgs = nefarius::winapi::cli::GetCommandLineArgs();
@@ -719,6 +719,85 @@ int main(int argc, char* argv[])
         return EXIT_SUCCESS;
     }
 
+    constexpr PCSTR ENABLE_BLUETOOTH_SERVICE = "--enable-bluetooth-service";
+    constexpr PCSTR DISABLE_BLUETOOTH_SERVICE = "--disable-bluetooth-service";
+
+    if (cmdl[{ENABLE_BLUETOOTH_SERVICE}] || cmdl[{DISABLE_BLUETOOTH_SERVICE}])
+    {
+        //
+        // Sanity check
+        // 
+        if (cmdl[{ENABLE_BLUETOOTH_SERVICE}] && cmdl[{DISABLE_BLUETOOTH_SERVICE}])
+        {
+            logger->error("You must either specify 'enable' or 'disable' action, not both together");
+            return EXIT_FAILURE;
+        }
+
+        const bool enable = cmdl[{ENABLE_BLUETOOTH_SERVICE}];
+
+        auto bthServiceName = cmdl({"--service-name"}).str();
+        auto bthServiceGuid = cmdl({"--service-guid"}).str();
+
+        if (bthServiceName.empty())
+        {
+            logger->error("Service name missing");
+            return EXIT_FAILURE;
+        }
+
+        if (bthServiceGuid.empty())
+        {
+            logger->error("Service GUID missing");
+            return EXIT_FAILURE;
+        }
+
+        const auto guid = nefarius::winapi::GUIDFromString(bthServiceGuid);
+
+        if (!guid)
+        {
+            logger->error(
+                "GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
+            return EXIT_FAILURE;
+        }
+
+        int errorCode;
+        if (!IsAdmin(errorCode))
+        {
+            return errorCode;
+        }
+
+        if (auto ret = nefarius::winapi::security::AdjustProcessPrivileges(); !ret)
+        {
+            logger->error("Failed to modify process privileges, error: %v", ret.error().getErrorMessageA());
+            return ret.error().getErrorCode();
+        }
+
+        auto serviceNameWide = nefarius::utilities::ConvertAnsiToWide(bthServiceName);
+
+        BLUETOOTH_LOCAL_SERVICE_INFO svcInfo = {};
+	    wcscpy_s(svcInfo.szName, sizeof(svcInfo.szName) / sizeof(WCHAR), serviceNameWide.c_str());
+
+        svcInfo.Enabled = enable ? TRUE : FALSE;
+	    Bthprops bth;
+
+        if (DWORD err; ERROR_SUCCESS != (err = bth.pBluetoothSetLocalServiceInfo(
+            nullptr, //callee would select the first found radio
+            &guid.value(),
+            0,
+            &svcInfo
+        )))
+        {
+            auto error = nefarius::utilities::Win32Error(err);
+            logger->error("Failed to %v local service, error: %v",
+                          enable ? "enable" : "disable",
+                          error.getErrorMessageA());
+            return error.getErrorCode();
+        }
+
+        logger->info("Service %v successfully", enable ? "enabled" : "disabled");
+
+        return EXIT_SUCCESS;
+    }
+
 #pragma endregion
 
 #pragma region Version
@@ -778,6 +857,12 @@ int main(int argc, char* argv[])
     std::cout << "    --find-hwid                Shows one or more devices matching a partial Hardware ID" << '\n';
     std::cout << "      ---hardware-id           (Partial) Hardware ID of the device to match against (required)" <<
         '\n';
+    std::cout << "    --enable-bluetooth-service   Enables a local Bluetooth service" << '\n';
+    std::cout << "      --service-name             The service name" << '\n';
+    std::cout << "      --service-guid             The service GUID" << '\n';
+    std::cout << "    --disable-bluetooth-service  Disables a local Bluetooth service" << '\n';
+    std::cout << "      --service-name             The service name" << '\n';
+    std::cout << "      --service-guid             The service GUID" << '\n';
     std::cout << "    -v, --version              Display version of this utility" << '\n';
     std::cout << '\n';
     std::cout << "  logging:" << '\n';

@@ -35,6 +35,9 @@
     <ClInclude Include="src\ColorLogging.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\LibraryHelper.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include=".\src\NefConUtil.rc">
