@@ -6,7 +6,8 @@ platform:
 - x64
 - ARM64
 configuration:
-- Release
+- "Release (Console)"
+- "Release (WinMain)"
 test: off
 branches:
   only:
