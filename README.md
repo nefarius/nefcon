@@ -1,6 +1,6 @@
 # <img src="assets/NSS-128x128.png" align="left" />nefcon
 
-[![MSBuild](https://github.com/nefarius/nefcon/actions/workflows/msbuild.yml/badge.svg)](https://github.com/nefarius/nefcon/actions/workflows/msbuild.yml)
+[![Build status](https://ci.appveyor.com/api/projects/status/11y1mbdw4fk8ir9c/branch/master?svg=true)](https://ci.appveyor.com/project/nefarius/nefcon/branch/master)
 [![GitHub All Releases](https://img.shields.io/github/downloads/nefarius/nefcon/total)](https://somsubhra.github.io/github-release-stats/?username=nefarius&repository=nefcon)
 [![Discord](https://img.shields.io/discord/346756263763378176.svg)](https://discord.nefarius.at)
 [![GitHub followers](https://img.shields.io/github/followers/nefarius.svg?style=social&label=Follow)](https://github.com/nefarius)
