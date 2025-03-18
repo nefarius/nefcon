@@ -1,0 +1,37 @@
+version: 1.13.{build}
+build_cloud: WIN-LKR467JS4GL
+image: Windows
+platform:
+- x86
+- x64
+- ARM64
+configuration:
+- Release
+test: off
+branches:
+  only:
+    - master
+    - /v\d+\.\d+\.\d+/
+skip_commits:
+  files:
+    - assets/*
+    - '**/*.md'
+    - '**/*.png'
+install:
+- cmd: git submodule -q update --init
+- cmd: ./vcpkg/bootstrap-vcpkg.bat
+- cmd: choco install vswhere
+# Source: https://gist.github.com/nefarius/b60a498b0229b5cf0e338b7a39460b80
+- ps: Setup-VS2022 $env:PLATFORM
+before_build:
+- cmd: vpatch.exe --stamp-version "%APPVEYOR_BUILD_VERSION%" --target-file ".\src\NefConUtil.rc" --resource.file-version --resource.product-version
+build:
+  project: $(APPVEYOR_BUILD_FOLDER)\$(APPVEYOR_PROJECT_NAME).sln
+artifacts:
+- path: bin\**\*.exe
+  name: nefcon
+deploy:
+- provider: Environment
+  name: BUILDBOT
+  on:
+    appveyor_repo_tag: true
