@@ -26,7 +26,7 @@ install:
 before_build:
 - cmd: vpatch.exe --stamp-version "%APPVEYOR_BUILD_VERSION%" --target-file ".\src\NefConUtil.rc" --resource.file-version --resource.product-version
 build:
-  project: $(APPVEYOR_BUILD_FOLDER)\$(APPVEYOR_PROJECT_NAME).sln
+  project: $(APPVEYOR_BUILD_FOLDER)\NefConUtil.sln
 artifacts:
 - path: bin\**\*.exe
   name: nefcon
