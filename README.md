@@ -52,6 +52,8 @@ winget install nefcon
 
 For a console example use `nefconc`, for windowless execution use `nefconw` binary.
 
+These examples only cover a subset of commands, run `nefconc.exe --help` to see all the options offered.
+
 ### Installing a Primitive Driver
 
 ```text
