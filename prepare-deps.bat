@@ -41,7 +41,7 @@ set "SCRIPT_DIR=!SCRIPT_DIR:~0,-1!"
 
 REM Locate VS for "all" mode (each triplet needs different vcvars)
 set "VS_PATH="
-if "%PLATFORM%"=="all" (
+if /i "%PLATFORM%"=="all" (
  for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath 2^>nul`) do set "VS_PATH=%%i"
  if not defined VS_PATH (
    echo vswhere not found or no VS installation. Run from Developer Command Prompt or specify a platform.
@@ -63,7 +63,7 @@ if /i "%PLATFORM%"=="x86" (
  echo Installing dependencies for arm64-windows-static...
  vcpkg\vcpkg.exe install --triplet arm64-windows-static %VCPKG_EXTRA_OPTIONS%
  if errorlevel 1 exit /b 1
-) else if "%PLATFORM%"=="all" (
+) else if /i "%PLATFORM%"=="all" (
  echo Installing dependencies for x86-windows-static, x64-windows-static, and arm64-windows-static...
  REM vcpkg manifest mode keeps only one triplet per install - use separate staging dirs then merge
 
@@ -96,8 +96,11 @@ if /i "%PLATFORM%"=="x86" (
 
  if not exist "!SCRIPT_DIR!\vcpkg_installed" mkdir "!SCRIPT_DIR!\vcpkg_installed"
  xcopy /E /I /Y /Q "!SCRIPT_DIR!\vcpkg_installed_x86_stage\*" "!SCRIPT_DIR!\vcpkg_installed\" >nul
+ if errorlevel 1 goto :merge_error
  xcopy /E /I /Y /Q "!SCRIPT_DIR!\vcpkg_installed_x64_stage\*" "!SCRIPT_DIR!\vcpkg_installed\" >nul
+ if errorlevel 1 goto :merge_error
  xcopy /E /I /Y /Q "!SCRIPT_DIR!\vcpkg_installed_arm64_stage\*" "!SCRIPT_DIR!\vcpkg_installed\" >nul
+ if errorlevel 1 goto :merge_error
  rmdir /S /Q "!SCRIPT_DIR!\vcpkg_installed_x86_stage" 2>nul
  rmdir /S /Q "!SCRIPT_DIR!\vcpkg_installed_x64_stage" 2>nul
  rmdir /S /Q "!SCRIPT_DIR!\vcpkg_installed_arm64_stage" 2>nul
@@ -110,3 +113,7 @@ if /i "%PLATFORM%"=="x86" (
 echo.
 echo Dependencies installed. You can now build from Visual Studio.
 exit /b 0
+
+:merge_error
+echo Failed to merge vcpkg staging directories into vcpkg_installed.
+exit /b 1
