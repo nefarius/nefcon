@@ -24,6 +24,10 @@ namespace
 
     std::string GetImageBasePath();
 
+    enum class DeviceExistsResult { Found, NotFound, Error };
+
+    DeviceExistsResult DeviceExists(const std::string& hwId, int& errorCode);
+
 #if !defined(NEFCON_WINMAIN)
     void CustomizeEasyLoggingColoredConsole();
 #endif
@@ -103,14 +107,33 @@ int main(int argc, char* argv[])
 
         const auto& infClass = infClassResult.value();
 
-        if (const auto createResult = nefarius::devcon::Create(
-                infClass.ClassName,
-                &infClass.ClassGUID,
-                nefarius::utilities::WideMultiStringArray(hardwareId));
-            !createResult)
+        bool deviceAlreadyExists = false;
+
+        if (cmdl[{"--no-duplicates"}])
         {
-            logger->error("Failed to create device node, error: %v", createResult.error().getErrorMessageA());
-            return createResult.error().getErrorCode();
+            int findErrorCode;
+            const auto exists = DeviceExists(arguments[3], findErrorCode);
+
+            if (exists == DeviceExistsResult::Error)
+                return findErrorCode;
+
+            deviceAlreadyExists = (exists == DeviceExistsResult::Found);
+
+            if (deviceAlreadyExists)
+                logger->info("Device with hardware ID \"%v\" already exists, skipping node creation", arguments[3]);
+        }
+
+        if (!deviceAlreadyExists)
+        {
+            if (const auto createResult = nefarius::devcon::Create(
+                    infClass.ClassName,
+                    &infClass.ClassGUID,
+                    nefarius::utilities::WideMultiStringArray(hardwareId));
+                !createResult)
+            {
+                logger->error("Failed to create device node, error: %v", createResult.error().getErrorMessageA());
+                return createResult.error().getErrorCode();
+            }
         }
 
         bool rebootRequired = false;
@@ -430,6 +453,21 @@ int main(int argc, char* argv[])
         {
             logger->error("Hardware ID missing");
             return EXIT_FAILURE;
+        }
+
+        if (cmdl[{"--no-duplicates"}])
+        {
+            int findErrorCode;
+            const auto exists = DeviceExists(hwId, findErrorCode);
+
+            if (exists == DeviceExistsResult::Error)
+                return findErrorCode;
+
+            if (exists == DeviceExistsResult::Found)
+            {
+                logger->info("Device with hardware ID \"%v\" already exists, skipping creation", hwId);
+                return EXIT_SUCCESS;
+            }
         }
 
         if (!(cmdl({"--class-name"}) >> className))
@@ -829,6 +867,7 @@ int main(int argc, char* argv[])
     std::cout << "      --hardware-id            Hardware ID of the new device (required)" << '\n';
     std::cout << "      --class-name             Device Class Name of the new device (required)" << '\n';
     std::cout << "      --class-guid             Device Class GUID of the new device (required)" << '\n';
+    std::cout << "      --no-duplicates          Skip creation if a device with the same Hardware ID already exists (optional)" << '\n';
     std::cout << "    --remove-device-node       Removes a device and its driver" << '\n';
     std::cout << "      --hardware-id            Hardware ID of the device (required)" << '\n';
     std::cout << "      --class-guid             Device Class GUID of the device (required)" << '\n';
@@ -872,6 +911,8 @@ int main(int argc, char* argv[])
     std::cout << '\n';
     std::cout << "  devcon:" << '\n';
     std::cout << "    install [INFFile] [HardwareID]     Creates and installs a ROOT-enumerated device and driver" <<
+        '\n';
+    std::cout << "      --no-duplicates                  Skip device creation if it already exists; still updates the driver (optional)" <<
         '\n';
     std::cout << '\n';
 
@@ -917,6 +958,22 @@ namespace
         );
 
         return {myPath};
+    }
+
+    DeviceExistsResult DeviceExists(const std::string& hwId, int& errorCode)
+    {
+        el::Logger* logger = el::Loggers::getLogger("default");
+
+        const auto findResult = nefarius::devcon::FindByHwId(nefarius::utilities::ConvertAnsiToWide(hwId));
+
+        if (!findResult)
+        {
+            logger->error("Failed to search for existing devices, error: %v", findResult.error().getErrorMessageA());
+            errorCode = findResult.error().getErrorCode();
+            return DeviceExistsResult::Error;
+        }
+
+        return findResult.value().empty() ? DeviceExistsResult::NotFound : DeviceExistsResult::Found;
     }
 
 #if !defined(NEFCON_WINMAIN)
