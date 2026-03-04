@@ -90,14 +90,26 @@ function Save-AppVeyorArtifacts {
 
         foreach ($artifact in $artifacts) {
             $remotePath = $artifact.fileName
-            $localPath = Join-Path $DestinationDir $remotePath
 
-            $localDir = Split-Path $localPath -Parent
+            $sanitized = $remotePath -replace '[\\/]+', '/'
+            $sanitized = $sanitized.TrimStart('/')
+            if ($sanitized -match '(^|/)\.\.(/|$)') {
+                throw "Artifact fileName contains path traversal: '$remotePath'"
+            }
+
+            $localPath = Join-Path $DestinationDir $sanitized
+            $resolvedLocal = [System.IO.Path]::GetFullPath($localPath)
+            $resolvedDest = [System.IO.Path]::GetFullPath($DestinationDir)
+            if (!$resolvedLocal.StartsWith($resolvedDest + [System.IO.Path]::DirectorySeparatorChar)) {
+                throw "Artifact path escapes destination directory: '$remotePath'"
+            }
+
+            $localDir = Split-Path $resolvedLocal -Parent
             New-Item -ItemType Directory -Path $localDir -Force | Out-Null
 
             $downloadUrl = "$script:AppVeyorApiBase/buildjobs/$jobId/artifacts/$remotePath"
             Write-Host "  Downloading $remotePath ..."
-            Invoke-WebRequest -Uri $downloadUrl -OutFile $localPath -UseBasicParsing
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $resolvedLocal -UseBasicParsing
         }
     }
 }
