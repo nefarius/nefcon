@@ -130,13 +130,14 @@ int main(int argc, char* argv[])
 
                 if (cmdl[{"--no-duplicates"}])
                 {
-                    int recheckErrorCode;
+                    int recheckErrorCode; // intentionally ignored; prefer the original Create() error on failure
                     createdConcurrently = DeviceExists(arguments[3], recheckErrorCode) == DeviceExistsResult::Found;
+                    (void)recheckErrorCode;
                 }
 
                 if (createdConcurrently)
                 {
-                    logger->info("Device with hardware ID \"%v\" was created concurrently, proceeding", arguments[3]);
+                    logger->info("Device with hardware ID \"%v\" was created concurrently, skipping node creation", arguments[3]);
                 }
                 else
                 {
@@ -507,8 +508,9 @@ int main(int argc, char* argv[])
 
             if (cmdl[{"--no-duplicates"}])
             {
-                int recheckErrorCode;
+                int recheckErrorCode; // intentionally ignored; prefer the original Create() error on failure
                 createdConcurrently = DeviceExists(hwId, recheckErrorCode) == DeviceExistsResult::Found;
+                (void)recheckErrorCode;
             }
 
             if (!createdConcurrently)
@@ -517,7 +519,7 @@ int main(int argc, char* argv[])
                 return ret.error().getErrorCode();
             }
 
-            logger->info("Device with hardware ID \"%v\" already exists, skipping creation", hwId);
+            logger->info("Device with hardware ID \"%v\" was created concurrently, skipping creation", hwId);
             return EXIT_SUCCESS;
         }
 
