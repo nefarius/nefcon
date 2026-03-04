@@ -14,13 +14,13 @@ This little self-contained, no-dependency tool can be built either as a console 
 
 ## Motivation
 
-Windows Device Driver management is and always has been hard. The APIs involved are old, moody and come with pitfalls. Historically the [`devcon`](https://github.com/microsoft/Windows-driver-samples/tree/b3af8c8f9bd508f54075da2f2516b31d05cd52c8/setup/devcon) tool or nowadays `pnputil` have been used to offload these tedious tasks, but unintuitive and sparsely documented command line arguments and error propagation make them poor candidates for automation in e.g. setup engines. Grown tired of these limitations I made this "devcon clone" available under a permissive license which offers the following highlighted features and more:
+Windows Device Driver management is and always has been hard. The APIs involved are old, moody and come with pitfalls. Historically the [`devcon`](https://github.com/microsoft/Windows-driver-samples/tree/b3af8c8f9bd508f54075da2f2516b31d05cd52c8/setup/devcon) tool or nowadays `pnputil` have been used to offload these tedious tasks, but unintuitive and sparsely documented command line arguments and error propagation make them poor candidates for automation in e.g. setup engines. Having grown tired of these limitations I made this "devcon clone" available under a permissive license which offers the following highlighted features and more:
 
 - Allows for true window-less execution
 - Actively suppresses and works around user interaction inconsistencies ("reboot required" dialogs and OS-included bugs)
 - Offers optional logging to `stdout` or file
 - *Sane* command line arguments 😁
-- [Class filter](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/filter-drivers) values manipulation
+- Manipulation of [class filter](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/filter-drivers) entries
 - Supports installation of [primitive drivers](https://learn.microsoft.com/en-us/windows-hardware/drivers/develop/creating-a-primitive-driver)
 
 ## How to build
@@ -66,51 +66,177 @@ scoop install nefcon
 winget install nefcon
 ```
 
+## Command Reference
+
+All commands require **Administrator** privileges unless noted. Paths must be **absolute**. GUID format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (brackets optional). Check exit code `ERROR_SUCCESS_REBOOT_REQUIRED` (3010) when a reboot is needed.
+
+| Command | Description |
+|---------|-------------|
+| `--install-driver` | Primitive driver install (Win10 1903+); uses `DiInstallDriverW` |
+| `--uninstall-driver` | Primitive driver uninstall |
+| `--inf-default-install` | Legacy INF with `[DefaultInstall]` (e.g. Btrfs, volume controllers) |
+| `--inf-default-uninstall` | Legacy INF with `[DefaultUninstall]` section |
+| `--create-device-node` | Create ROOT-enumerated virtual device |
+| `--remove-device-node` | Remove all matching devices and driver; cleans driver store when unused |
+| `--add-class-filter` | Add upper/lower filter to device class |
+| `--remove-class-filter` | Remove upper/lower filter |
+| `--create-driver-service` | Create kernel driver service |
+| `--remove-driver-service` | Delete kernel driver service |
+| `--delete-file-on-reboot` | Schedule file deletion on next reboot |
+| `--find-hwid` | Search devices by partial hardware ID (no admin) |
+| `--enable-bluetooth-service` | Enable local Bluetooth service |
+| `--disable-bluetooth-service` | Disable local Bluetooth service |
+| `-v, --version` | Display version |
+
+### Driver installation
+
+**`--install-driver`** — Installs a [primitive driver](https://learn.microsoft.com/en-us/windows-hardware/drivers/develop/creating-a-primitive-driver) via `DiInstallDriverW`. Use for INF-based software packages targeting Windows 10 1903+ that are not tied to hardware.
+
+- **Required:** `--inf-path` (absolute path to INF)
+- **Pitfalls:** INF must exist; reboot may be required (check exit code)
+- **When to use:** Primitive drivers, DCH-compliant packages
+
+**`--uninstall-driver`** — Uninstalls a primitive driver via `DiUninstallDriverW`.
+
+- **Required:** `--inf-path`
+- **Pitfalls:** Same as `--install-driver`
+
+**`--inf-default-install`** — Installs an INF with `[DefaultInstall]` via `InstallHInfSection`. Use for legacy INFs (e.g. file system drivers like Btrfs).
+
+- **Required:** `--inf-path`
+- **When to use:** Legacy INFs with `[DefaultInstall]`; not for primitive drivers
+
+**`--inf-default-uninstall`** — Uninstalls an INF with `[DefaultUninstall]` section.
+
+- **Required:** `--inf-path`
+
+### Device node management
+
+**`--create-device-node`** — Creates a ROOT-enumerated virtual device.
+
+- **Required:** `--hardware-id`, `--class-name`, `--class-guid`
+- **When to use:** Software-enumerated devices (e.g. HidHide, virtual HID)
+
+**`--remove-device-node`** — Removes all devices matching hardware ID and class GUID, plus the driver from the driver store when no device uses it anymore. Also removes matching devices that currently have no driver loaded.
+
+- **Required:** `--hardware-id`, `--class-guid`
+- **Behavior:** One run removes all matching devices (not just a single occurrence); removes the driver copy from the driver store if no remaining device uses it
+- **Pitfalls:** Reboot may be required
+
+### Class filter manipulation
+
+**`--add-class-filter`** — Adds a service to a device class upper or lower filter list.
+
+- **Required:** `--position` (`upper` or `lower`), `--service-name`, `--class-guid`
+- **Pitfalls:** Reconnect affected devices or reboot to apply
+- **When to use:** Filter drivers (e.g. HidHide on HIDClass)
+
+**`--remove-class-filter`** — Removes a service from the filter list.
+
+- **Required:** Same as `--add-class-filter`
+
+### Driver service management
+
+**`--create-driver-service`** — Creates a kernel driver service.
+
+- **Required:** `--bin-path` (path to .sys), `--service-name`, `--display-name`
+- **Pitfalls:** Binary must exist; does not start the service
+
+**`--remove-driver-service`** — Deletes a kernel driver service.
+
+- **Required:** `--service-name`
+
+### Utilities
+
+**`--delete-file-on-reboot`** — Marks a file for deletion on next reboot. May take ownership if access denied.
+
+- **Required:** `--file-path`
+- **When to use:** Cleaning up driver files, locked files
+
+**`--find-hwid`** — Searches for devices by partial hardware ID. Does not require admin.
+
+- **Required:** `--hardware-id` (partial match)
+- **Exit codes:** `ERROR_NOT_FOUND` if no match
+- **When to use:** Discovering device hardware IDs before install/remove
+
+**`--enable-bluetooth-service`** / **`--disable-bluetooth-service`** — Toggle a local Bluetooth service.
+
+- **Required:** `--service-name`, `--service-guid`
+
+### Logging
+
+- `--default-log-file=.\log.txt` — Write execution details to file
+- `--verbose` — Enable diagnostic logging
+
+### devcon compatibility
+
+**`install [INFFile] [HardwareID]`** — Drop-in for [`devcon install`](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-install). Creates ROOT-enumerated device and installs driver. The `/r` flag is not supported; check exit code for reboot requirement.
+
+---
+
 ## Examples
 
-For a console example use `nefconc`, for windowless execution use `nefconw` binary.
+Use `nefconc` for console output, `nefconw` for windowless execution (e.g. in setup makers). Run `nefconc.exe --help` for all options.
 
-These examples only cover a subset of commands, run `nefconc.exe --help` to see all the options offered.
-
-### Installing a Primitive Driver
+### Primitive / PnP driver installation
 
 ```text
 nefconw --install-driver --inf-path "Path\To\Inf.inf"
-```
-
-### Uninstalling a Primitive Driver
-
-```text
 nefconw --uninstall-driver --inf-path "Path\To\Inf.inf"
 ```
 
-### Modifying HIDClass upper filters
+### Legacy INF installation
 
-```text
-nefconw --add-class-filter --position upper --service-name HidHide --class-guid 745a17a0-74d3-11d0-b6fe-00a0c90f57da
-```
-
-### Create virtual Root-enumerated device node
-
-```text
-nefconw --create-device-node --hardware-id root\HidHide --class-name System --class-guid 4D36E97D-E325-11CE-BFC1-08002BE10318
-```
-
-### Remove device(s) and driver
-
-```text
-nefconw --remove-device-node --hardware-id root\HidHide --class-guid 4D36E97D-E325-11CE-BFC1-08002BE10318
-```
-
-### Install file system volume controller driver
+Use `--inf-default-install` for INFs with `[DefaultInstall]` (e.g. file system drivers). Use `--install-driver` for primitive drivers (Win10 1903+).
 
 ```text
 nefconw --inf-default-install --inf-path "F:\Downloads\btrfs-1.8\btrfs.inf"
+nefconw --inf-default-uninstall --inf-path "F:\Downloads\btrfs-1.8\btrfs.inf"
 ```
 
-## `devcon` "emulation"
+### Device node management
 
-Currently the [`devcon install INFfile HardwareID`](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-install) command is implemented so you can use `nefcon` as a drop-in replacement for this popular software node device driver installation command! The `/r` flag to auto-reboot is not supported; check the exit code to determine if a reboot is required and inform the user to do so whenever convenient.
+```text
+nefconw --create-device-node --hardware-id root\HidHide --class-name System --class-guid 4D36E97D-E325-11CE-BFC1-08002BE10318
+nefconw --remove-device-node --hardware-id root\HidHide --class-guid 4D36E97D-E325-11CE-BFC1-08002BE10318
+```
+
+### Class filter manipulation
+
+```text
+nefconw --add-class-filter --position upper --service-name HidHide --class-guid 745a17a0-74d3-11d0-b6fe-00a0c90f57da
+nefconw --remove-class-filter --position upper --service-name HidHide --class-guid 745a17a0-74d3-11d0-b6fe-00a0c90f57da
+```
+
+### Driver service management
+
+```text
+nefconw --create-driver-service --bin-path "C:\Drivers\MyDriver.sys" --service-name MyDriver --display-name "My Driver"
+nefconw --remove-driver-service --service-name MyDriver
+```
+
+### Utilities
+
+```text
+nefconw --delete-file-on-reboot --file-path "C:\Windows\System32\drivers\olddriver.sys"
+nefconc --find-hwid --hardware-id "USB\VID_1234"
+nefconw --enable-bluetooth-service --service-name "My BLE Service" --service-guid 0000180a-0000-1000-8000-00805f9b34fb
+nefconw --disable-bluetooth-service --service-name "My BLE Service" --service-guid 0000180a-0000-1000-8000-00805f9b34fb
+```
+
+### devcon compatibility
+
+```text
+nefconw install "Path\To\Inf.inf" "root\MyDevice"
+```
+
+## `devcon` emulation
+
+The [`devcon install INFfile HardwareID`](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-install) command is implemented as a drop-in replacement. See [Command Reference](#command-reference) for details. The `/r` flag is not supported; check the exit code to determine if a reboot is required.
+
+## For developers
+
+The driver and device management logic is implemented in [neflib](https://github.com/nefarius/neflib). Key modules include `Devcon.hpp` (InstallDriver, UninstallDriver, InfDefaultInstall, Create, etc.) and `ClassFilter.hpp`. For implementation details, API behavior, or to contribute fixes, see the [neflib repository](https://github.com/nefarius/neflib).
 
 ## 3rd party credits
 
