@@ -34,9 +34,10 @@ Windows Device Driver management is and always has been hard. The APIs involved 
 
 Dependencies must be installed before the first build from Visual Studio:
 
-1. Open **Developer Command Prompt for VS 2022** (or x64 Native Tools for x64/ARM64, x86 Native Tools for Win32)
-2. Run `prepare-deps.bat` from the repo root (installs all platforms) or `prepare-deps.bat x64` for x64 only
-3. Build the solution in Visual Studio
+1. Clone the repository and initialize submodules: `git submodule update --init --recursive` (ensures the vcpkg submodule is populated)
+2. Open **Developer Command Prompt for VS 2022** (or x64 Native Tools for x64/ARM64, x86 Native Tools for Win32)
+3. Run `prepare-deps.bat` from the repo root (installs all platforms) or `prepare-deps.bat x64` for x64 only
+4. Build the solution in Visual Studio
 
 Dependencies (argh, detours, easyloggingpp, neflib, etc.) are declared in `vcpkg.json` and installed via vcpkg (included as a submodule). The build will use existing `vcpkg_installed` if present.
 

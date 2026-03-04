@@ -69,16 +69,28 @@ if /i "%PLATFORM%"=="x86" (
 
  echo [1/3] Building x86-windows-static...
  call "!VS_PATH!\VC\Auxiliary\Build\vcvarsall.bat" x86 >nul 2>&1
+ if errorlevel 1 (
+   echo vcvarsall x86 failed.
+   exit /b 1
+ )
  vcpkg\vcpkg.exe install --triplet x86-windows-static --x-install-root="!SCRIPT_DIR!\vcpkg_installed_x86_stage" %VCPKG_EXTRA_OPTIONS%
  if errorlevel 1 exit /b 1
 
  echo [2/3] Building x64-windows-static...
  call "!VS_PATH!\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>&1
+ if errorlevel 1 (
+   echo vcvarsall x64 failed.
+   exit /b 1
+ )
  vcpkg\vcpkg.exe install --triplet x64-windows-static --x-install-root="!SCRIPT_DIR!\vcpkg_installed_x64_stage" %VCPKG_EXTRA_OPTIONS%
  if errorlevel 1 exit /b 1
 
  echo [3/3] Building arm64-windows-static...
  call "!VS_PATH!\VC\Auxiliary\Build\vcvarsall.bat" x64_arm64 >nul 2>&1
+ if errorlevel 1 (
+   echo vcvarsall x64_arm64 failed.
+   exit /b 1
+ )
  vcpkg\vcpkg.exe install --triplet arm64-windows-static --x-install-root="!SCRIPT_DIR!\vcpkg_installed_arm64_stage" %VCPKG_EXTRA_OPTIONS%
  if errorlevel 1 exit /b 1
 
