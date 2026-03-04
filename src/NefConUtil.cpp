@@ -855,7 +855,7 @@ int main(int argc, char* argv[])
     std::cout << "    --delete-file-on-reboot    Marks a given file to get deleted on next reboot" << '\n';
     std::cout << "      --file-path              The absolute path of the file to remove (required)" << '\n';
     std::cout << "    --find-hwid                Shows one or more devices matching a partial Hardware ID" << '\n';
-    std::cout << "      ---hardware-id           (Partial) Hardware ID of the device to match against (required)" <<
+    std::cout << "      --hardware-id            (Partial) Hardware ID of the device to match against (required)" <<
         '\n';
     std::cout << "    --enable-bluetooth-service   Enables a local Bluetooth service" << '\n';
     std::cout << "      --service-name             The service name" << '\n';
