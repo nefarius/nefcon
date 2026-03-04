@@ -28,6 +28,8 @@ namespace
 
     DeviceExistsResult DeviceExists(const std::string& hwId, int& errorCode);
 
+    DeviceExistsResult CheckNoDuplicates(const argh::parser& cmdl, const std::string& hwId, int& errorCode);
+
 #if !defined(NEFCON_WINMAIN)
     void CustomizeEasyLoggingColoredConsole();
 #endif
@@ -107,32 +109,40 @@ int main(int argc, char* argv[])
 
         const auto& infClass = infClassResult.value();
 
-        bool deviceAlreadyExists = false;
+        int findErrorCode;
+        const auto dupCheck = CheckNoDuplicates(cmdl, arguments[3], findErrorCode);
 
-        if (cmdl[{"--no-duplicates"}])
-        {
-            int findErrorCode;
-            const auto exists = DeviceExists(arguments[3], findErrorCode);
+        if (dupCheck == DeviceExistsResult::Error)
+            return findErrorCode;
 
-            if (exists == DeviceExistsResult::Error)
-                return findErrorCode;
-
-            deviceAlreadyExists = (exists == DeviceExistsResult::Found);
-
-            if (deviceAlreadyExists)
-                logger->info("Device with hardware ID \"%v\" already exists, skipping node creation", arguments[3]);
-        }
+        const bool deviceAlreadyExists = (dupCheck == DeviceExistsResult::Found);
 
         if (!deviceAlreadyExists)
         {
-            if (const auto createResult = nefarius::devcon::Create(
-                    infClass.ClassName,
-                    &infClass.ClassGUID,
-                    nefarius::utilities::WideMultiStringArray(hardwareId));
-                !createResult)
+            const auto createResult = nefarius::devcon::Create(
+                infClass.ClassName,
+                &infClass.ClassGUID,
+                nefarius::utilities::WideMultiStringArray(hardwareId));
+
+            if (!createResult)
             {
-                logger->error("Failed to create device node, error: %v", createResult.error().getErrorMessageA());
-                return createResult.error().getErrorCode();
+                bool createdConcurrently = false;
+
+                if (cmdl[{"--no-duplicates"}])
+                {
+                    int recheckErrorCode;
+                    createdConcurrently = DeviceExists(arguments[3], recheckErrorCode) == DeviceExistsResult::Found;
+                }
+
+                if (createdConcurrently)
+                {
+                    logger->info("Device with hardware ID \"%v\" was created concurrently, proceeding", arguments[3]);
+                }
+                else
+                {
+                    logger->error("Failed to create device node, error: %v", createResult.error().getErrorMessageA());
+                    return createResult.error().getErrorCode();
+                }
             }
         }
 
@@ -455,19 +465,15 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (cmdl[{"--no-duplicates"}])
         {
             int findErrorCode;
-            const auto exists = DeviceExists(hwId, findErrorCode);
+            const auto dupCheck = CheckNoDuplicates(cmdl, hwId, findErrorCode);
 
-            if (exists == DeviceExistsResult::Error)
+            if (dupCheck == DeviceExistsResult::Error)
                 return findErrorCode;
 
-            if (exists == DeviceExistsResult::Found)
-            {
-                logger->info("Device with hardware ID \"%v\" already exists, skipping creation", hwId);
+            if (dupCheck == DeviceExistsResult::Found)
                 return EXIT_SUCCESS;
-            }
         }
 
         if (!(cmdl({"--class-name"}) >> className))
@@ -497,8 +503,22 @@ int main(int argc, char* argv[])
 
         if (!ret)
         {
-            logger->error("Failed to create device node, error: %v", ret.error().getErrorMessageA());
-            return ret.error().getErrorCode();
+            bool createdConcurrently = false;
+
+            if (cmdl[{"--no-duplicates"}])
+            {
+                int recheckErrorCode;
+                createdConcurrently = DeviceExists(hwId, recheckErrorCode) == DeviceExistsResult::Found;
+            }
+
+            if (!createdConcurrently)
+            {
+                logger->error("Failed to create device node, error: %v", ret.error().getErrorMessageA());
+                return ret.error().getErrorCode();
+            }
+
+            logger->info("Device with hardware ID \"%v\" already exists, skipping creation", hwId);
+            return EXIT_SUCCESS;
         }
 
         logger->info("Device node created successfully");
@@ -964,7 +984,8 @@ namespace
     {
         el::Logger* logger = el::Loggers::getLogger("default");
 
-        const auto findResult = nefarius::devcon::FindByHwId(nefarius::utilities::ConvertAnsiToWide(hwId));
+        const auto hwIdWide = nefarius::utilities::ConvertAnsiToWide(hwId);
+        const auto findResult = nefarius::devcon::FindByHwId(hwIdWide);
 
         if (!findResult)
         {
@@ -973,7 +994,32 @@ namespace
             return DeviceExistsResult::Error;
         }
 
-        return findResult.value().empty() ? DeviceExistsResult::NotFound : DeviceExistsResult::Found;
+        for (const auto& [HardwareIds, Name, Version] : findResult.value())
+        {
+            for (const auto& id : HardwareIds)
+            {
+                if (_wcsicmp(id.c_str(), hwIdWide.c_str()) == 0)
+                    return DeviceExistsResult::Found;
+            }
+        }
+
+        return DeviceExistsResult::NotFound;
+    }
+
+    DeviceExistsResult CheckNoDuplicates(const argh::parser& cmdl, const std::string& hwId, int& errorCode)
+    {
+        if (!cmdl[{"--no-duplicates"}])
+            return DeviceExistsResult::NotFound;
+
+        const auto exists = DeviceExists(hwId, errorCode);
+
+        if (exists == DeviceExistsResult::Found)
+        {
+            el::Logger* logger = el::Loggers::getLogger("default");
+            logger->info("Device with hardware ID \"%v\" already exists, skipping node creation", hwId);
+        }
+
+        return exists;
     }
 
 #if !defined(NEFCON_WINMAIN)
