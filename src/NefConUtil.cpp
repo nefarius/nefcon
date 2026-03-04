@@ -24,6 +24,12 @@ namespace
 
     std::string GetImageBasePath();
 
+    enum class DeviceExistsResult { Found, NotFound, Error };
+
+    DeviceExistsResult DeviceExists(const std::string& hwId, int& errorCode);
+
+    DeviceExistsResult CheckNoDuplicates(const argh::parser& cmdl, const std::string& hwId, int& errorCode);
+
 #if !defined(NEFCON_WINMAIN)
     void CustomizeEasyLoggingColoredConsole();
 #endif
@@ -103,14 +109,42 @@ int main(int argc, char* argv[])
 
         const auto& infClass = infClassResult.value();
 
-        if (const auto createResult = nefarius::devcon::Create(
+        int findErrorCode;
+        const auto dupCheck = CheckNoDuplicates(cmdl, arguments[3], findErrorCode);
+
+        if (dupCheck == DeviceExistsResult::Error)
+            return findErrorCode;
+
+        const bool deviceAlreadyExists = (dupCheck == DeviceExistsResult::Found);
+
+        if (!deviceAlreadyExists)
+        {
+            const auto createResult = nefarius::devcon::Create(
                 infClass.ClassName,
                 &infClass.ClassGUID,
                 nefarius::utilities::WideMultiStringArray(hardwareId));
-            !createResult)
-        {
-            logger->error("Failed to create device node, error: %v", createResult.error().getErrorMessageA());
-            return createResult.error().getErrorCode();
+
+            if (!createResult)
+            {
+                bool createdConcurrently = false;
+
+                if (cmdl[{"--no-duplicates"}])
+                {
+                    int recheckErrorCode; // intentionally ignored; prefer the original Create() error on failure
+                    createdConcurrently = DeviceExists(arguments[3], recheckErrorCode) == DeviceExistsResult::Found;
+                    (void)recheckErrorCode;
+                }
+
+                if (createdConcurrently)
+                {
+                    logger->info("Device with hardware ID \"%v\" was created concurrently, skipping node creation", arguments[3]);
+                }
+                else
+                {
+                    logger->error("Failed to create device node, error: %v", createResult.error().getErrorMessageA());
+                    return createResult.error().getErrorCode();
+                }
+            }
         }
 
         bool rebootRequired = false;
@@ -432,6 +466,17 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
+        {
+            int findErrorCode;
+            const auto dupCheck = CheckNoDuplicates(cmdl, hwId, findErrorCode);
+
+            if (dupCheck == DeviceExistsResult::Error)
+                return findErrorCode;
+
+            if (dupCheck == DeviceExistsResult::Found)
+                return EXIT_SUCCESS;
+        }
+
         if (!(cmdl({"--class-name"}) >> className))
         {
             logger->error("Device Class Name missing");
@@ -459,8 +504,23 @@ int main(int argc, char* argv[])
 
         if (!ret)
         {
-            logger->error("Failed to create device node, error: %v", ret.error().getErrorMessageA());
-            return ret.error().getErrorCode();
+            bool createdConcurrently = false;
+
+            if (cmdl[{"--no-duplicates"}])
+            {
+                int recheckErrorCode; // intentionally ignored; prefer the original Create() error on failure
+                createdConcurrently = DeviceExists(hwId, recheckErrorCode) == DeviceExistsResult::Found;
+                (void)recheckErrorCode;
+            }
+
+            if (!createdConcurrently)
+            {
+                logger->error("Failed to create device node, error: %v", ret.error().getErrorMessageA());
+                return ret.error().getErrorCode();
+            }
+
+            logger->info("Device with hardware ID \"%v\" was created concurrently, skipping creation", hwId);
+            return EXIT_SUCCESS;
         }
 
         logger->info("Device node created successfully");
@@ -829,6 +889,7 @@ int main(int argc, char* argv[])
     std::cout << "      --hardware-id            Hardware ID of the new device (required)" << '\n';
     std::cout << "      --class-name             Device Class Name of the new device (required)" << '\n';
     std::cout << "      --class-guid             Device Class GUID of the new device (required)" << '\n';
+    std::cout << "      --no-duplicates          Skip creation if a device with the same Hardware ID already exists (optional)" << '\n';
     std::cout << "    --remove-device-node       Removes a device and its driver" << '\n';
     std::cout << "      --hardware-id            Hardware ID of the device (required)" << '\n';
     std::cout << "      --class-guid             Device Class GUID of the device (required)" << '\n';
@@ -873,6 +934,8 @@ int main(int argc, char* argv[])
     std::cout << "  devcon:" << '\n';
     std::cout << "    install [INFFile] [HardwareID]     Creates and installs a ROOT-enumerated device and driver" <<
         '\n';
+    std::cout << "      --no-duplicates                  Skip device creation if it already exists; still updates the driver (optional)" <<
+        '\n';
     std::cout << '\n';
 
 #pragma endregion
@@ -906,6 +969,13 @@ namespace
         return true;
     }
 
+    /**
+     * @brief Retrieves the filesystem path of the current executable image.
+     *
+     * Returns the absolute path including the executable filename for the running module.
+     *
+     * @return std::string Absolute path to the current executable image; an empty string if the path cannot be determined.
+     */
     std::string GetImageBasePath()
     {
         char myPath[MAX_PATH + 1] = {};
@@ -919,7 +989,78 @@ namespace
         return {myPath};
     }
 
+    /**
+     * @brief Checks whether a device with the given hardware ID exists on the system.
+     *
+     * Searches for devices matching the provided hardware identifier and reports if any match was found.
+     *
+     * @param hwId ASCII hardware identifier to search for.
+     * @param[out] errorCode Receives a platform-specific error code when the search fails; unchanged on success.
+     * @return DeviceExistsResult
+     *         - DeviceExistsResult::Found if a matching device was found.
+     *         - DeviceExistsResult::NotFound if no matching device was found.
+     *         - DeviceExistsResult::Error if the search failed (in which case `errorCode` is set).
+     */
+    DeviceExistsResult DeviceExists(const std::string& hwId, int& errorCode)
+    {
+        el::Logger* logger = el::Loggers::getLogger("default");
+
+        const auto hwIdWide = nefarius::utilities::ConvertAnsiToWide(hwId);
+        const auto findResult = nefarius::devcon::FindByHwId(hwIdWide);
+
+        if (!findResult)
+        {
+            logger->error("Failed to search for existing devices, error: %v", findResult.error().getErrorMessageA());
+            errorCode = findResult.error().getErrorCode();
+            return DeviceExistsResult::Error;
+        }
+
+        for (const auto& [HardwareIds, Name, Version] : findResult.value())
+        {
+            for (const auto& id : HardwareIds)
+            {
+                if (_wcsicmp(id.c_str(), hwIdWide.c_str()) == 0)
+                    return DeviceExistsResult::Found;
+            }
+        }
+
+        return DeviceExistsResult::NotFound;
+    }
+
+    /**
+     * @brief Checks whether the --no-duplicates option is set and, if so, determines if a device with the given hardware ID already exists.
+     *
+     * When --no-duplicates is not present, the function reports that no existing device was found.
+     *
+     * @param cmdl Parsed command-line arguments.
+     * @param hwId Hardware identifier to search for.
+     * @param errorCode Receives a platform-specific error code if the existence check fails.
+     * @return DeviceExistsResult `Found` if a matching device exists, `NotFound` if none was found, or `Error` if the check failed.
+     */
+    DeviceExistsResult CheckNoDuplicates(const argh::parser& cmdl, const std::string& hwId, int& errorCode)
+    {
+        if (!cmdl[{"--no-duplicates"}])
+            return DeviceExistsResult::NotFound;
+
+        const auto exists = DeviceExists(hwId, errorCode);
+
+        if (exists == DeviceExistsResult::Found)
+        {
+            el::Logger* logger = el::Loggers::getLogger("default");
+            logger->info("Device with hardware ID \"%v\" already exists, skipping node creation", hwId);
+        }
+
+        return exists;
+    }
+
 #if !defined(NEFCON_WINMAIN)
+    /**
+     * @brief Configure EasyLogging++ to use a colored console output backend.
+     *
+     * Installs and enables a custom console log-dispatch callback that emits
+     * colorized output, disables the default standard-output logging, and
+     * enables immediate flush for the default logger.
+     */
     void CustomizeEasyLoggingColoredConsole()
     {
         el::Configurations conf;

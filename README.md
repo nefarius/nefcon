@@ -115,6 +115,7 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 **`--create-device-node`** — Creates a ROOT-enumerated virtual device.
 
 - **Required:** `--hardware-id`, `--class-name`, `--class-guid`
+- **Optional:** `--no-duplicates` — skips creation if a device with the same hardware ID already exists (returns success). Recommended for upgrade paths to avoid duplicate device instances.
 - **When to use:** Software-enumerated devices (e.g. HidHide, virtual HID)
 
 **`--remove-device-node`** — Removes all devices matching hardware ID and class GUID, plus the driver from the driver store when no device uses it anymore. Also removes matching devices that currently have no driver loaded.
@@ -172,6 +173,8 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 
 **`install [INFFile] [HardwareID]`** — Drop-in for [`devcon install`](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-install). Creates ROOT-enumerated device and installs driver. The `/r` flag is not supported; check exit code for reboot requirement.
 
+- **Optional:** `--no-duplicates` — skips device node creation if a device with the same hardware ID already exists; still updates the driver. Ideal for upgrade/reinstall scenarios.
+
 ---
 
 ## Examples
@@ -199,6 +202,9 @@ nefconw --inf-default-uninstall --inf-path "F:\Downloads\btrfs-1.8\btrfs.inf"
 ```text
 nefconw --create-device-node --hardware-id root\HidHide --class-name System --class-guid 4D36E97D-E325-11CE-BFC1-08002BE10318
 nefconw --remove-device-node --hardware-id root\HidHide --class-guid 4D36E97D-E325-11CE-BFC1-08002BE10318
+
+# Upgrade-safe: only creates the node if it doesn't already exist
+nefconw --create-device-node --hardware-id root\HidHide --class-name System --class-guid 4D36E97D-E325-11CE-BFC1-08002BE10318 --no-duplicates
 ```
 
 ### Class filter manipulation
@@ -228,6 +234,9 @@ nefconw --disable-bluetooth-service --service-name "My BLE Service" --service-gu
 
 ```text
 nefconw install "Path\To\Inf.inf" "root\MyDevice"
+
+# Upgrade-safe: skips node creation if device exists, still updates the driver
+nefconw install "Path\To\Inf.inf" "root\MyDevice" --no-duplicates
 ```
 
 ## `devcon` emulation
