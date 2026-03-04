@@ -364,3 +364,4 @@ FodyWeavers.xsd
 /RC*
 /RD*
 /vcpkg_installed/
+.release-local/
