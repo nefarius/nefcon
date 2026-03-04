@@ -68,7 +68,7 @@ winget install nefcon
 
 ## Command Reference
 
-All commands require **Administrator** privileges unless noted. Paths must be **absolute**. GUID format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (brackets optional). Check exit code `ERROR_SUCCESS_REBOOT_REQUIRED` (3010) when a reboot is needed.
+All commands require **Administrator** privileges unless noted. Paths may be absolute or relative to the current working directory. GUID format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (brackets optional). Check exit code `ERROR_SUCCESS_REBOOT_REQUIRED` (3010) when a reboot is needed.
 
 | Command | Description |
 |---------|-------------|
@@ -92,7 +92,7 @@ All commands require **Administrator** privileges unless noted. Paths must be **
 
 **`--install-driver`** — Installs a [primitive driver](https://learn.microsoft.com/en-us/windows-hardware/drivers/develop/creating-a-primitive-driver) via `DiInstallDriverW`. Use for INF-based software packages targeting Windows 10 1903+ that are not tied to hardware.
 
-- **Required:** `--inf-path` (absolute path to INF)
+- **Required:** `--inf-path` (path to INF, absolute or relative to CWD)
 - **Pitfalls:** INF must exist; reboot may be required (check exit code)
 - **When to use:** Primitive drivers, DCH-compliant packages
 

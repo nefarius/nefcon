@@ -822,9 +822,9 @@ int main(int argc, char* argv[])
 #endif
     std::cout << "  options:" << '\n';
     std::cout << "    --install-driver           Invoke the installation of a given PNP driver" << '\n';
-    std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << '\n';
+    std::cout << "      --inf-path               Path to the INF file to install, absolute or relative to CWD (required)" << '\n';
     std::cout << "    --uninstall-driver         Invoke the removal of a given PNP driver" << '\n';
-    std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << '\n';
+    std::cout << "      --inf-path               Path to the INF file to uninstall, absolute or relative to CWD (required)" << '\n';
     std::cout << "    --create-device-node       Create a new ROOT enumerated virtual device" << '\n';
     std::cout << "      --hardware-id            Hardware ID of the new device (required)" << '\n';
     std::cout << "      --class-name             Device Class Name of the new device (required)" << '\n';
@@ -843,17 +843,17 @@ int main(int argc, char* argv[])
     std::cout << "      --service-name           The driver service name to insert (required)" << '\n';
     std::cout << "      --class-guid             Device Class GUID to modify (required)" << '\n';
     std::cout << "    --create-driver-service    Creates a new service with a kernel driver as binary" << '\n';
-    std::cout << "      --bin-path               Absolute path to the .sys file (required)" << '\n';
+    std::cout << "      --bin-path               Path to the .sys file, absolute or relative to CWD (required)" << '\n';
     std::cout << "      --service-name           The driver service name to create (required)" << '\n';
     std::cout << "      --display-name           The friendly name of the service (required)" << '\n';
     std::cout << "    --remove-driver-service    Removes an existing kernel driver service" << '\n';
     std::cout << "      --service-name           The driver service name to remove (required)" << '\n';
     std::cout << "    --inf-default-install      Installs an INF file with a [DefaultInstall] section" << '\n';
-    std::cout << "      --inf-path               Absolute path to the INF file to install (required)" << '\n';
+    std::cout << "      --inf-path               Path to the INF file to install, absolute or relative to CWD (required)" << '\n';
     std::cout << "    --inf-default-uninstall    Uninstalls an INF file with a [DefaultUninstall] section" << '\n';
-    std::cout << "      --inf-path               Absolute path to the INF file to uninstall (required)" << '\n';
+    std::cout << "      --inf-path               Path to the INF file to uninstall, absolute or relative to CWD (required)" << '\n';
     std::cout << "    --delete-file-on-reboot    Marks a given file to get deleted on next reboot" << '\n';
-    std::cout << "      --file-path              The absolute path of the file to remove (required)" << '\n';
+    std::cout << "      --file-path              Path of the file to remove, absolute or relative to CWD (required)" << '\n';
     std::cout << "    --find-hwid                Shows one or more devices matching a partial Hardware ID" << '\n';
     std::cout << "      --hardware-id            (Partial) Hardware ID of the device to match against (required)" <<
         '\n';
