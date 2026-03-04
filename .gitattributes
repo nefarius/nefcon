@@ -4,6 +4,11 @@
 * text=auto
 
 ###############################################################################
+# Windows batch files require CRLF for correct parsing.
+###############################################################################
+*.bat text eol=crlf
+
+###############################################################################
 # Set default behavior for command prompt diff.
 #
 # This is need for earlier builds of msysgit that does not have it on by
