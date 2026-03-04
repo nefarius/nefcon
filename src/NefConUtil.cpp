@@ -967,6 +967,13 @@ namespace
         return true;
     }
 
+    /**
+     * @brief Retrieves the filesystem path of the current executable image.
+     *
+     * Returns the absolute path including the executable filename for the running module.
+     *
+     * @return std::string Absolute path to the current executable image; an empty string if the path cannot be determined.
+     */
     std::string GetImageBasePath()
     {
         char myPath[MAX_PATH + 1] = {};
@@ -980,6 +987,18 @@ namespace
         return {myPath};
     }
 
+    /**
+     * @brief Checks whether a device with the given hardware ID exists on the system.
+     *
+     * Searches for devices matching the provided hardware identifier and reports if any match was found.
+     *
+     * @param hwId ASCII hardware identifier to search for.
+     * @param[out] errorCode Receives a platform-specific error code when the search fails; unchanged on success.
+     * @return DeviceExistsResult
+     *         - DeviceExistsResult::Found if a matching device was found.
+     *         - DeviceExistsResult::NotFound if no matching device was found.
+     *         - DeviceExistsResult::Error if the search failed (in which case `errorCode` is set).
+     */
     DeviceExistsResult DeviceExists(const std::string& hwId, int& errorCode)
     {
         el::Logger* logger = el::Loggers::getLogger("default");
@@ -1006,6 +1025,16 @@ namespace
         return DeviceExistsResult::NotFound;
     }
 
+    /**
+     * @brief Checks whether the --no-duplicates option is set and, if so, determines if a device with the given hardware ID already exists.
+     *
+     * When --no-duplicates is not present, the function reports that no existing device was found.
+     *
+     * @param cmdl Parsed command-line arguments.
+     * @param hwId Hardware identifier to search for.
+     * @param errorCode Receives a platform-specific error code if the existence check fails.
+     * @return DeviceExistsResult `Found` if a matching device exists, `NotFound` if none was found, or `Error` if the check failed.
+     */
     DeviceExistsResult CheckNoDuplicates(const argh::parser& cmdl, const std::string& hwId, int& errorCode)
     {
         if (!cmdl[{"--no-duplicates"}])
@@ -1023,6 +1052,13 @@ namespace
     }
 
 #if !defined(NEFCON_WINMAIN)
+    /**
+     * @brief Configure EasyLogging++ to use a colored console output backend.
+     *
+     * Installs and enables a custom console log-dispatch callback that emits
+     * colorized output, disables the default standard-output logging, and
+     * enables immediate flush for the default logger.
+     */
     void CustomizeEasyLoggingColoredConsole()
     {
         el::Configurations conf;
