@@ -25,7 +25,9 @@ install:
 # Source: https://gist.github.com/nefarius/b60a498b0229b5cf0e338b7a39460b80
 - ps: Setup-VS2022 $env:PLATFORM
 before_build:
-- cmd: vpatch.exe --stamp-version "%APPVEYOR_BUILD_VERSION%" --target-file ".\src\NefConUtil.rc" --resource.file-version --resource.product-version
+- ps: |
+    $ver = if ($env:APPVEYOR_REPO_TAG -eq 'true') { $env:APPVEYOR_REPO_TAG_NAME -replace '^v' } else { $env:APPVEYOR_BUILD_VERSION }
+    vpatch --stamp-version $ver --target-file ".\src\NefConUtil.rc" --resource.file-version --resource.product-version
 build:
   project: $(APPVEYOR_BUILD_FOLDER)\NefConUtil.sln
 artifacts:
