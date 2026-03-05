@@ -171,7 +171,7 @@ try {
         throw "Expected directory '$binRoot' not found. Artifact layout may have changed."
     }
 
-    $finalZip = Join-Path $resolvedOutputDir "nefcon_x86_amd64_arm64.zip"
+    $finalZip = Join-Path $resolvedOutputDir "nefcon_$Tag.zip"
     if (Test-Path $finalZip) {
         Remove-Item -Path $finalZip -Force
     }
