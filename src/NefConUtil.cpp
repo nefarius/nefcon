@@ -30,6 +30,15 @@ namespace
 
     DeviceExistsResult CheckNoDuplicates(const argh::parser& cmdl, const std::string& hwId, int& errorCode);
 
+    struct RemoveDuplicatesResult
+    {
+        DWORD Removed;
+        DWORD Failed;
+        bool RebootRequired;
+    };
+
+    RemoveDuplicatesResult RemoveDuplicateDeviceNodes(const GUID* classGuid, const std::string& hwId);
+
 #if !defined(NEFCON_WINMAIN)
     void CustomizeEasyLoggingColoredConsole();
 #endif
@@ -115,7 +124,28 @@ int main(int argc, char* argv[])
         if (dupCheck == DeviceExistsResult::Error)
             return findErrorCode;
 
+        if (cmdl[{"--remove-duplicates"}] && !cmdl[{"--no-duplicates"}])
+            logger->warn("--remove-duplicates has no effect without --no-duplicates");
+
         const bool deviceAlreadyExists = (dupCheck == DeviceExistsResult::Found);
+
+        bool scrubRebootRequired = false;
+
+        if (deviceAlreadyExists && cmdl[{"--remove-duplicates"}])
+        {
+            const auto scrubResult = RemoveDuplicateDeviceNodes(&infClass.ClassGUID, arguments[3]);
+
+            if (scrubResult.Failed > 0)
+            {
+                logger->error("Failed to remove %v duplicate device node(s)", scrubResult.Failed);
+                return EXIT_FAILURE;
+            }
+
+            if (scrubResult.Removed > 0)
+                logger->info("Removed %v duplicate device node(s)", scrubResult.Removed);
+
+            scrubRebootRequired = scrubResult.RebootRequired;
+        }
 
         if (!deviceAlreadyExists)
         {
@@ -147,14 +177,16 @@ int main(int argc, char* argv[])
             }
         }
 
-        bool rebootRequired = false;
+        bool driverRebootRequired = false;
 
-        if (const auto updateResult = nefarius::devcon::Update(hardwareId, infFilePath, &rebootRequired); !updateResult)
+        if (const auto updateResult = nefarius::devcon::Update(hardwareId, infFilePath, &driverRebootRequired); !updateResult)
         {
             logger->error("Failed to update device node(s) with driver, error: %v",
                           updateResult.error().getErrorMessageA());
             return updateResult.error().getErrorCode();
         }
+
+        const bool rebootRequired = driverRebootRequired || scrubRebootRequired;
 
         logger->info((rebootRequired)
                          ? "Device and driver installed successfully, but a reboot is required"
@@ -1044,6 +1076,8 @@ int main(int argc, char* argv[])
         '\n';
     std::cout << "      --no-duplicates                  Skip device creation if it already exists; still updates the driver (optional)" <<
         '\n';
+    std::cout << "      --remove-duplicates              Remove extra device nodes with same Hardware ID, keeping one (optional, requires --no-duplicates)" <<
+        '\n';
     std::cout << "    remove [HardwareID]                Removes all present devices matching the given Hardware ID" <<
         '\n';
     std::cout << '\n';
@@ -1161,6 +1195,129 @@ namespace
         }
 
         return exists;
+    }
+
+    /**
+     * @brief Removes all but the first device node matching the given hardware ID within a specific device class.
+     *
+     * Enumerates present devices of the specified class, collects those with an exact (case-insensitive) hardware ID
+     * match, then removes every match after the first one via DIF_REMOVE. The driver package in the store is left intact.
+     *
+     * @param classGuid Pointer to the device class GUID to scope the enumeration.
+     * @param hwId ASCII hardware identifier to match against.
+     * @return RemoveDuplicatesResult with counts of removed/failed nodes and whether a reboot is required.
+     */
+    RemoveDuplicatesResult RemoveDuplicateDeviceNodes(const GUID* classGuid, const std::string& hwId)
+    {
+        el::Logger* logger = el::Loggers::getLogger("default");
+
+        RemoveDuplicatesResult result = {0, 0, false};
+
+        const std::wstring hardwareId = nefarius::utilities::ConvertAnsiToWide(hwId);
+
+        const HDEVINFO hDevInfo = SetupDiGetClassDevs(classGuid, nullptr, nullptr, DIGCF_PRESENT);
+
+        if (hDevInfo == INVALID_HANDLE_VALUE)
+        {
+            logger->error("Failed to enumerate devices, error: %v",
+                          nefarius::utilities::Win32Error("SetupDiGetClassDevs").getErrorMessageA());
+            result.Failed = 1;
+            return result;
+        }
+
+        nefarius::utilities::guards::HDEVINFOHandleGuard hDevInfoGuard(hDevInfo);
+
+        SP_DEVINFO_DATA devInfoData = {};
+        devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+
+        struct MatchedDevice
+        {
+            SP_DEVINFO_DATA DevInfoData;
+            std::wstring InstanceId;
+        };
+
+        std::vector<MatchedDevice> matches;
+        DWORD deviceIndex = 0;
+
+        while (SetupDiEnumDeviceInfo(hDevInfo, deviceIndex++, &devInfoData))
+        {
+            DWORD requiredSize = 0;
+            SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_HARDWAREID, nullptr, nullptr, 0,
+                                              &requiredSize);
+
+            if (requiredSize == 0)
+                continue;
+
+            std::vector<BYTE> buffer(requiredSize);
+            if (!SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_HARDWAREID, nullptr, buffer.data(),
+                                                   requiredSize, nullptr))
+                continue;
+
+            bool matched = false;
+            for (auto pCurrent = reinterpret_cast<LPCWSTR>(buffer.data()); *pCurrent != L'\0';
+                 pCurrent += wcslen(pCurrent) + 1)
+            {
+                if (_wcsicmp(pCurrent, hardwareId.c_str()) == 0)
+                {
+                    matched = true;
+                    break;
+                }
+            }
+
+            if (!matched)
+                continue;
+
+            WCHAR instanceId[MAX_DEVICE_ID_LEN] = {};
+            SetupDiGetDeviceInstanceIdW(hDevInfo, &devInfoData, instanceId, MAX_DEVICE_ID_LEN, nullptr);
+
+            matches.push_back({devInfoData, std::wstring(instanceId)});
+        }
+
+        if (matches.size() <= 1)
+        {
+            logger->verbose(1, "No duplicate device nodes to remove for hardware ID \"%v\"", hwId);
+            return result;
+        }
+
+        logger->info("Found %v device node(s) matching hardware ID \"%v\", removing %v duplicate(s)",
+                     static_cast<DWORD>(matches.size()), hwId, static_cast<DWORD>(matches.size() - 1));
+
+        for (size_t i = 1; i < matches.size(); i++)
+        {
+            SP_REMOVEDEVICE_PARAMS rmdParams = {};
+            rmdParams.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
+            rmdParams.ClassInstallHeader.InstallFunction = DIF_REMOVE;
+            rmdParams.Scope = DI_REMOVEDEVICE_GLOBAL;
+            rmdParams.HwProfile = 0;
+
+            if (!SetupDiSetClassInstallParams(hDevInfo, &matches[i].DevInfoData, &rmdParams.ClassInstallHeader,
+                                              sizeof(rmdParams)) ||
+                !SetupDiCallClassInstaller(DIF_REMOVE, hDevInfo, &matches[i].DevInfoData))
+            {
+                logger->error("Failed to remove duplicate device %v, error: %v",
+                              matches[i].InstanceId,
+                              nefarius::utilities::Win32Error("SetupDiCallClassInstaller").getErrorMessageA());
+                result.Failed++;
+                continue;
+            }
+
+            SP_DEVINSTALL_PARAMS devParams = {};
+            devParams.cbSize = sizeof(SP_DEVINSTALL_PARAMS);
+            if (SetupDiGetDeviceInstallParams(hDevInfo, &matches[i].DevInfoData, &devParams) &&
+                (devParams.Flags & (DI_NEEDRESTART | DI_NEEDREBOOT)))
+            {
+                logger->info("Removed duplicate: %v (reboot required)", matches[i].InstanceId);
+                result.RebootRequired = true;
+            }
+            else
+            {
+                logger->info("Removed duplicate: %v", matches[i].InstanceId);
+            }
+
+            result.Removed++;
+        }
+
+        return result;
     }
 
 #if !defined(NEFCON_WINMAIN)
