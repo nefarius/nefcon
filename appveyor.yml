@@ -1,4 +1,4 @@
-version: 1.15.{build}
+version: 1.16.{build}
 build_cloud: WIN-LKR467JS4GL
 image: Windows
 platform:
