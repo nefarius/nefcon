@@ -163,6 +163,114 @@ int main(int argc, char* argv[])
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
     }
 
+    if (arguments.size() > 2 && arguments[1] == "remove")
+    {
+        int errorCode;
+        if (!IsAdmin(errorCode)) return errorCode;
+
+        const std::wstring hardwareId = nefarius::utilities::ConvertToWide(arguments[2]);
+
+        const HDEVINFO hDevInfo = SetupDiGetClassDevs(nullptr, nullptr, nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
+
+        if (hDevInfo == INVALID_HANDLE_VALUE)
+        {
+            logger->error("Failed to enumerate devices, error: %v",
+                          nefarius::utilities::Win32Error("SetupDiGetClassDevs").getErrorMessageA());
+            return EXIT_FAILURE;
+        }
+
+        nefarius::utilities::guards::HDEVINFOHandleGuard hDevInfoGuard(hDevInfo);
+
+        SP_DEVINFO_DATA devInfoData = {};
+        devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+
+        DWORD deviceIndex = 0;
+        DWORD removedCount = 0;
+        DWORD failedCount = 0;
+        bool rebootRequired = false;
+
+        while (SetupDiEnumDeviceInfo(hDevInfo, deviceIndex++, &devInfoData))
+        {
+            DWORD requiredSize = 0;
+            SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_HARDWAREID, nullptr, nullptr, 0,
+                                              &requiredSize);
+
+            if (requiredSize == 0)
+                continue;
+
+            std::vector<BYTE> buffer(requiredSize);
+            if (!SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_HARDWAREID, nullptr, buffer.data(),
+                                                   requiredSize, nullptr))
+                continue;
+
+            bool matched = false;
+            for (auto pCurrent = reinterpret_cast<LPCWSTR>(buffer.data()); *pCurrent != L'\0';
+                 pCurrent += wcslen(pCurrent) + 1)
+            {
+                if (_wcsicmp(pCurrent, hardwareId.c_str()) == 0)
+                {
+                    matched = true;
+                    break;
+                }
+            }
+
+            if (!matched)
+                continue;
+
+            WCHAR instanceId[MAX_DEVICE_ID_LEN] = {};
+            SetupDiGetDeviceInstanceIdW(hDevInfo, &devInfoData, instanceId, MAX_DEVICE_ID_LEN, nullptr);
+
+            SP_REMOVEDEVICE_PARAMS rmdParams = {};
+            rmdParams.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
+            rmdParams.ClassInstallHeader.InstallFunction = DIF_REMOVE;
+            rmdParams.Scope = DI_REMOVEDEVICE_GLOBAL;
+            rmdParams.HwProfile = 0;
+
+            if (!SetupDiSetClassInstallParams(hDevInfo, &devInfoData, &rmdParams.ClassInstallHeader,
+                                              sizeof(rmdParams)) ||
+                !SetupDiCallClassInstaller(DIF_REMOVE, hDevInfo, &devInfoData))
+            {
+                logger->error("Failed to remove device %v, error: %v",
+                              std::wstring(instanceId),
+                              nefarius::utilities::Win32Error("SetupDiCallClassInstaller").getErrorMessageA());
+                failedCount++;
+                continue;
+            }
+
+            SP_DEVINSTALL_PARAMS devParams = {};
+            devParams.cbSize = sizeof(SP_DEVINSTALL_PARAMS);
+            if (SetupDiGetDeviceInstallParams(hDevInfo, &devInfoData, &devParams) &&
+                (devParams.Flags & (DI_NEEDRESTART | DI_NEEDREBOOT)))
+            {
+                logger->info("Removed: %v (reboot required)", std::wstring(instanceId));
+                rebootRequired = true;
+            }
+            else
+            {
+                logger->info("Removed: %v", std::wstring(instanceId));
+            }
+
+            removedCount++;
+        }
+
+        if (removedCount == 0 && failedCount == 0)
+        {
+            logger->warn("No devices found matching hardware ID \"%v\"", arguments[2]);
+            return EXIT_FAILURE;
+        }
+
+        if (failedCount > 0)
+        {
+            logger->error("%v device(s) removed, %v failed", removedCount, failedCount);
+            return EXIT_FAILURE;
+        }
+
+        logger->info("%v device(s) removed successfully%v",
+                     removedCount,
+                     rebootRequired ? ", reboot required" : "");
+        return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
+    }
+
 #pragma endregion
 
     std::string infPath, binPath, hwId, className, classGuid, serviceName, displayName, position, filePath;
@@ -935,6 +1043,8 @@ int main(int argc, char* argv[])
     std::cout << "    install [INFFile] [HardwareID]     Creates and installs a ROOT-enumerated device and driver" <<
         '\n';
     std::cout << "      --no-duplicates                  Skip device creation if it already exists; still updates the driver (optional)" <<
+        '\n';
+    std::cout << "    remove [HardwareID]                Removes all present devices matching the given Hardware ID" <<
         '\n';
     std::cout << '\n';
 
