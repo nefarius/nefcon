@@ -86,6 +86,7 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 | `--find-hwid` | Search devices by partial hardware ID (no admin) |
 | `--enable-bluetooth-service` | Enable local Bluetooth service |
 | `--disable-bluetooth-service` | Disable local Bluetooth service |
+| `remove [HardwareID]` | devcon-compatible device removal (device only, driver stays in store) |
 | `-v, --version` | Display version |
 
 ### Driver installation
@@ -175,6 +176,11 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 
 - **Optional:** `--no-duplicates` — skips device node creation if a device with the same hardware ID already exists; still updates the driver. Ideal for upgrade/reinstall scenarios.
 
+**`remove [HardwareID]`** — Drop-in for [`devcon remove`](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-remove). Removes all present devices whose hardware ID matches (case-insensitive). The behavior of `devcon remove` has been intentionally replicated 1:1 so that existing scripts and setup tools relying on this semantic continue to work without modification.
+
+- **No class GUID required** — enumerates across all device classes automatically.
+- **Important:** Unlike `--remove-device-node`, this command **only removes the device node** via `DIF_REMOVE`. The driver package remains in the driver store. Use `--remove-device-node` when you also want to clean the driver from the store.
+
 ---
 
 ## Examples
@@ -237,11 +243,16 @@ nefconw install "Path\To\Inf.inf" "root\MyDevice"
 
 # Upgrade-safe: skips node creation if device exists, still updates the driver
 nefconw install "Path\To\Inf.inf" "root\MyDevice" --no-duplicates
+
+# Remove all present devices matching the hardware ID (driver stays in store)
+nefconw remove "root\MyDevice"
 ```
 
 ## `devcon` emulation
 
-The [`devcon install INFfile HardwareID`](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-install) command is implemented as a drop-in replacement. See [Command Reference](#command-reference) for details. The `/r` flag is not supported; check the exit code to determine if a reboot is required.
+The [`devcon install`](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-install) and [`devcon remove`](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-remove) commands are implemented as drop-in replacements. See [Command Reference](#command-reference) for details. The `/r` flag is not supported; check the exit code to determine if a reboot is required.
+
+> **`remove` vs `--remove-device-node`:** The `remove` command intentionally mirrors original `devcon remove` behavior — it invokes `DIF_REMOVE` to delete the device node but **does not** touch the driver package in the driver store. If you need full cleanup (device *and* driver), use `--remove-device-node` with `--class-guid` instead.
 
 ## For developers
 

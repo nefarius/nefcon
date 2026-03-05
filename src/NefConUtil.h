@@ -7,6 +7,7 @@
 #include <Windows.h>
 #include <shlwapi.h>
 #include <SetupAPI.h>
+#include <cfgmgr32.h>
 #include <newdev.h>
 #include <winioctl.h>
 #include <rpc.h>
