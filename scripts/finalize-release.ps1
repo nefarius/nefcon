@@ -154,7 +154,7 @@ try {
     $downloadDir = Join-Path $workRoot "unsigned"
     Save-AppVeyorArtifacts -Jobs $jobs -DestinationDir $downloadDir
 
-    $targets = Get-ChildItem -Path $downloadDir -Filter "*.exe" -Recurse
+    $targets = @(Get-ChildItem -Path $downloadDir -Filter "*.exe" -Recurse)
     if ($targets.Count -eq 0) {
         throw "No exe files found after downloading artifacts."
     }
