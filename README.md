@@ -175,6 +175,7 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 **`install [INFFile] [HardwareID]`** — Drop-in for [`devcon install`](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-install). Creates ROOT-enumerated device and installs driver. The `/r` flag is not supported; check exit code for reboot requirement.
 
 - **Optional:** `--no-duplicates` — skips device node creation if a device with the same hardware ID already exists; still updates the driver. Ideal for upgrade/reinstall scenarios.
+- **Optional:** `--remove-duplicates` — when used together with `--no-duplicates`, removes all but one matching device node before the driver update. Solves the common problem of multiple device nodes with the same hardware ID accumulating due to past setup failures or script reruns. Has no effect without `--no-duplicates` (a warning is logged).
 
 **`remove [HardwareID]`** — Drop-in for [`devcon remove`](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-remove). Removes all present devices whose hardware ID matches (case-insensitive). The behavior of `devcon remove` has been intentionally replicated 1:1 so that existing scripts and setup tools relying on this semantic continue to work without modification.
 
@@ -243,6 +244,9 @@ nefconw install "Path\To\Inf.inf" "root\MyDevice"
 
 # Upgrade-safe: skips node creation if device exists, still updates the driver
 nefconw install "Path\To\Inf.inf" "root\MyDevice" --no-duplicates
+
+# Upgrade-safe with cleanup: removes duplicate device nodes, keeps one, then updates the driver
+nefconw install "Path\To\Inf.inf" "root\MyDevice" --no-duplicates --remove-duplicates
 
 # Remove all present devices matching the hardware ID (driver stays in store)
 nefconw remove "root\MyDevice"

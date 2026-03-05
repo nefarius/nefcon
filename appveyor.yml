@@ -1,4 +1,4 @@
-version: 1.16.{build}
+version: 1.17.{build}
 build_cloud: WIN-LKR467JS4GL
 image: Windows
 platform:
@@ -28,8 +28,20 @@ before_build:
 - ps: |
     $ver = if ($env:APPVEYOR_REPO_TAG -eq 'true') { $env:APPVEYOR_REPO_TAG_NAME -replace '^v' } else { $env:APPVEYOR_BUILD_VERSION }
     vpatch --stamp-version $ver --target-file ".\src\NefConUtil.rc" --resource.file-version --resource.product-version
-build:
-  project: $(APPVEYOR_BUILD_FOLDER)\NefConUtil.sln
+build_script:
+- ps: |
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        msbuild "$env:APPVEYOR_BUILD_FOLDER\NefConUtil.sln" `
+            /p:Configuration="$env:CONFIGURATION" `
+            /p:Platform="$env:PLATFORM" `
+            /m
+        if ($LASTEXITCODE -eq 0) { return }
+        if ($attempt -lt 3) {
+            Write-Warning "Build attempt $attempt/3 failed (exit code $LASTEXITCODE), retrying in 15 seconds..."
+            Start-Sleep -Seconds 15
+        }
+    }
+    throw "Build failed after 3 attempts"
 artifacts:
 - path: bin\**\*.exe
   name: nefcon
