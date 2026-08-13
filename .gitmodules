@@ -1,3 +1,6 @@
 [submodule "vcpkg"]
 	path = vcpkg
 	url = https://github.com/microsoft/vcpkg.git
+[submodule "neflib"]
+	path = neflib
+	url = https://github.com/nefarius/neflib.git

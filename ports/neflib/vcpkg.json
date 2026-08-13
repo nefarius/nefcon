@@ -1,0 +1,19 @@
+{
+  "name": "neflib",
+  "version": "1.4.0",
+  "description": "A collection of my C/C++ utilities.",
+  "homepage": "https://github.com/nefarius/neflib",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "vcpkg-msbuild",
+      "host": true
+    },
+    "wil",
+    "detours",
+    "scope-guard"
+  ],
+  "features": {},
+  "supports": "windows & static & !uwp",
+  "default-features": []
+}

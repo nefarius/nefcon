@@ -41,6 +41,18 @@ Dependencies must be installed before the first build from Visual Studio:
 
 Dependencies (argh, detours, easyloggingpp, neflib, etc.) are declared in `vcpkg.json` and installed via vcpkg (included as a submodule). The build will use existing `vcpkg_installed` if present.
 
+### Local development against neflib
+
+The core device/driver management logic lives in [neflib](https://github.com/nefarius/neflib), consumed as a normal vcpkg package pinned in `vcpkg-configuration.json` via the [nefarius-vcpkg-registry](https://github.com/nefarius/nefarius-vcpkg-registry). For convenience, neflib is also checked out as a git submodule at `neflib/`, so both repos can be edited from a single checkout.
+
+To build against your local neflib checkout instead of the published package:
+
+1. `git submodule update --init neflib`
+2. `set NEFCON_LOCAL_NEFLIB=1` before running `prepare-deps.bat` or building from Visual Studio (this activates the `ports/neflib` overlay port, which builds `neflib/src/neflib.vcxproj` in place)
+3. After editing neflib sources, run `.\sync-local-neflib.ps1` (from PowerShell; from a Developer Command Prompt use `powershell -File .\sync-local-neflib.ps1`) to stamp `ports/neflib/portfile.cmake` with a fresh hash of the neflib sources — vcpkg's cache is keyed off the port files, not `neflib/`'s contents, so without this step edits would not trigger a rebuild
+
+Unset `NEFCON_LOCAL_NEFLIB` (and re-run `prepare-deps.bat`) to go back to the published package. Note that the submodule's pinned commit and the registry's baseline in `vcpkg-configuration.json` are independent pins that can drift; the registry baseline is what CI and release builds actually use, the submodule is purely a development convenience.
+
 ## Installation
 
 Binaries are available to download in the [releases](https://github.com/nefarius/nefcon/releases/latest) page, just download and extract. However, if you are using a package manager, you can use one of the following options:
@@ -105,11 +117,13 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 **`--inf-default-install`** — Installs an INF with `[DefaultInstall]` via `InstallHInfSection`. Use for legacy INFs (e.g. file system drivers like Btrfs).
 
 - **Required:** `--inf-path`
+- **Optional:** `--attempt-restart-affected` — attempt to restart devices affected by any class filter changes the INF declares, best-effort (a reboot may still be required for devices that could not be restarted); add `--class-guid` to also restart devices of an extra class not declared in the INF, and `--restart-timeout` to change the per-device timeout in milliseconds (default `10000`)
 - **When to use:** Legacy INFs with `[DefaultInstall]`; not for primitive drivers
 
 **`--inf-default-uninstall`** — Uninstalls an INF with `[DefaultUninstall]` section.
 
 - **Required:** `--inf-path`
+- **Optional:** `--attempt-restart-affected`, `--class-guid`, `--restart-timeout` — same semantics as `--inf-default-install`
 
 ### Device node management
 
@@ -130,12 +144,14 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 **`--add-class-filter`** — Adds a service to a device class upper or lower filter list.
 
 - **Required:** `--position` (`upper` or `lower`), `--service-name`, `--class-guid`
-- **Pitfalls:** Reconnect affected devices or reboot to apply
+- **Optional:** `--attempt-restart-affected` — attempt to restart present devices of `--class-guid`, best-effort (a reboot may still be required for devices that could not be restarted); `--restart-timeout` sets the per-device timeout in milliseconds (default `10000`)
+- **Pitfalls:** Without `--attempt-restart-affected`, reconnect affected devices or reboot to apply
 - **When to use:** Filter drivers (e.g. HidHide on HIDClass)
 
 **`--remove-class-filter`** — Removes a service from the filter list.
 
 - **Required:** Same as `--add-class-filter`
+- **Optional:** Same as `--add-class-filter`
 
 ### Driver service management
 
@@ -202,6 +218,9 @@ Use `--inf-default-install` for INFs with `[DefaultInstall]` (e.g. file system d
 ```text
 nefconw --inf-default-install --inf-path "F:\Downloads\btrfs-1.8\btrfs.inf"
 nefconw --inf-default-uninstall --inf-path "F:\Downloads\btrfs-1.8\btrfs.inf"
+
+# Attempt to restart devices affected by the INF's class filter changes (best-effort; a reboot may still be required)
+nefconw --inf-default-install --inf-path "F:\Downloads\HidHide\HidHide.inf" --attempt-restart-affected --restart-timeout 5000
 ```
 
 ### Device node management
@@ -219,6 +238,9 @@ nefconw --create-device-node --hardware-id root\HidHide --class-name System --cl
 ```text
 nefconw --add-class-filter --position upper --service-name HidHide --class-guid 745a17a0-74d3-11d0-b6fe-00a0c90f57da
 nefconw --remove-class-filter --position upper --service-name HidHide --class-guid 745a17a0-74d3-11d0-b6fe-00a0c90f57da
+
+# Attempt to restart present devices of the class (best-effort; a reboot may still be required)
+nefconw --add-class-filter --position upper --service-name HidHide --class-guid 745a17a0-74d3-11d0-b6fe-00a0c90f57da --attempt-restart-affected
 ```
 
 ### Driver service management

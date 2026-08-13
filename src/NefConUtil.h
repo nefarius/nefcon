@@ -31,6 +31,7 @@
 #include <optional>
 #include <expected>
 #include <variant>
+#include <chrono>
 
 //
 // Add some colors to console
@@ -61,4 +62,5 @@
 #include <nefarius/neflib/INFHandleGuard.hpp>
 #include <nefarius/neflib/LibraryHelper.hpp>
 #include <nefarius/neflib/Devcon.hpp>
+#include <nefarius/neflib/DeviceRestart.hpp>
 #include <nefarius/neflib/MiscWinApi.hpp>

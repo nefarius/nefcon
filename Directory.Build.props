@@ -1,3 +1,12 @@
 <Project>
  <Import Project="$(MSBuildThisFileDirectory)vcpkg\scripts\buildsystems\msbuild\vcpkg.props" />
+ <!--
+   Dev-only: build against the local neflib submodule (ports/neflib overlay port) instead of the
+   published nefarius-vcpkg-registry package. Opt in with the NEFCON_LOCAL_NEFLIB=1 environment
+   variable. Run sync-local-neflib.ps1 after editing neflib sources so the overlay's cached build
+   gets invalidated; see ports/neflib/portfile.cmake for why that's necessary.
+ -->
+ <PropertyGroup Condition="'$(NEFCON_LOCAL_NEFLIB)' == '1'">
+   <VcpkgAdditionalInstallOptions>$(VcpkgAdditionalInstallOptions) --overlay-ports="$(MSBuildThisFileDirectory)ports"</VcpkgAdditionalInstallOptions>
+ </PropertyGroup>
 </Project>

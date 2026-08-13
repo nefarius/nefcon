@@ -18,6 +18,18 @@ cd /d "%~dp0"
 set "PLATFORM=%~1"
 if "%PLATFORM%"=="" set "PLATFORM=all"
 
+REM Dev-only: build against the local neflib submodule instead of the published registry package.
+REM Opt in with "set NEFCON_LOCAL_NEFLIB=1" before running this script; see ports\neflib\portfile.cmake.
+set "VCPKG_OVERLAY_OPTIONS="
+if "%NEFCON_LOCAL_NEFLIB%"=="1" (
+ echo Local neflib mode enabled ^(NEFCON_LOCAL_NEFLIB=1^), overlaying ports\neflib...
+ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sync-local-neflib.ps1"
+ if errorlevel 1 exit /b 1
+ REM Relative to the repo root (we already "cd /d" there above), so this stays a single,
+ REM space-safe argument regardless of where the repo is checked out.
+ set "VCPKG_OVERLAY_OPTIONS=--overlay-ports=ports"
+)
+
 if not exist "vcpkg\vcpkg.exe" (
  echo Bootstrapping vcpkg...
  call vcpkg\bootstrap-vcpkg.bat
@@ -53,15 +65,15 @@ if /i "%PLATFORM%"=="Win32" set "PLATFORM=x86"
 
 if /i "%PLATFORM%"=="x86" (
  echo Installing dependencies for x86-windows-static...
- vcpkg\vcpkg.exe install --triplet x86-windows-static %VCPKG_EXTRA_OPTIONS%
+ vcpkg\vcpkg.exe install --triplet x86-windows-static %VCPKG_EXTRA_OPTIONS% %VCPKG_OVERLAY_OPTIONS%
  if errorlevel 1 exit /b 1
 ) else if /i "%PLATFORM%"=="x64" (
  echo Installing dependencies for x64-windows-static...
- vcpkg\vcpkg.exe install --triplet x64-windows-static %VCPKG_EXTRA_OPTIONS%
+ vcpkg\vcpkg.exe install --triplet x64-windows-static %VCPKG_EXTRA_OPTIONS% %VCPKG_OVERLAY_OPTIONS%
  if errorlevel 1 exit /b 1
 ) else if /i "%PLATFORM%"=="ARM64" (
  echo Installing dependencies for arm64-windows-static...
- vcpkg\vcpkg.exe install --triplet arm64-windows-static %VCPKG_EXTRA_OPTIONS%
+ vcpkg\vcpkg.exe install --triplet arm64-windows-static %VCPKG_EXTRA_OPTIONS% %VCPKG_OVERLAY_OPTIONS%
  if errorlevel 1 exit /b 1
 ) else if /i "%PLATFORM%"=="all" (
  echo Installing dependencies for x86-windows-static, x64-windows-static, and arm64-windows-static...
@@ -73,7 +85,7 @@ if /i "%PLATFORM%"=="x86" (
    echo vcvarsall x86 failed.
    exit /b 1
  )
- vcpkg\vcpkg.exe install --triplet x86-windows-static --x-install-root="!SCRIPT_DIR!\vcpkg_installed_x86_stage" %VCPKG_EXTRA_OPTIONS%
+ vcpkg\vcpkg.exe install --triplet x86-windows-static --x-install-root="!SCRIPT_DIR!\vcpkg_installed_x86_stage" %VCPKG_EXTRA_OPTIONS% %VCPKG_OVERLAY_OPTIONS%
  if errorlevel 1 exit /b 1
 
  echo [2/3] Building x64-windows-static...
@@ -82,7 +94,7 @@ if /i "%PLATFORM%"=="x86" (
    echo vcvarsall x64 failed.
    exit /b 1
  )
- vcpkg\vcpkg.exe install --triplet x64-windows-static --x-install-root="!SCRIPT_DIR!\vcpkg_installed_x64_stage" %VCPKG_EXTRA_OPTIONS%
+ vcpkg\vcpkg.exe install --triplet x64-windows-static --x-install-root="!SCRIPT_DIR!\vcpkg_installed_x64_stage" %VCPKG_EXTRA_OPTIONS% %VCPKG_OVERLAY_OPTIONS%
  if errorlevel 1 exit /b 1
 
  echo [3/3] Building arm64-windows-static...
@@ -91,7 +103,7 @@ if /i "%PLATFORM%"=="x86" (
    echo vcvarsall x64_arm64 failed.
    exit /b 1
  )
- vcpkg\vcpkg.exe install --triplet arm64-windows-static --x-install-root="!SCRIPT_DIR!\vcpkg_installed_arm64_stage" %VCPKG_EXTRA_OPTIONS%
+ vcpkg\vcpkg.exe install --triplet arm64-windows-static --x-install-root="!SCRIPT_DIR!\vcpkg_installed_arm64_stage" %VCPKG_EXTRA_OPTIONS% %VCPKG_OVERLAY_OPTIONS%
  if errorlevel 1 exit /b 1
 
  if not exist "!SCRIPT_DIR!\vcpkg_installed" mkdir "!SCRIPT_DIR!\vcpkg_installed"
