@@ -16,6 +16,7 @@
 #include <bluetoothapis.h>
 #include <aclapi.h>
 #include <sddl.h>
+#include <shlobj.h>
 
 //
 // Device class interfaces
@@ -37,6 +38,7 @@
 #include <expected>
 #include <variant>
 #include <chrono>
+#include <functional>
 
 //
 // Add some colors to console

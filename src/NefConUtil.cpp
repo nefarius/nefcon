@@ -83,9 +83,11 @@ namespace
     //
     // Default --state-file location for a given service name, used when --state-file isn't
     // passed explicitly, so --remove-driver-service and --reenumerate-affected agree on where to
-    // find each other's data as long as the same --service-name is used for both.
+    // find each other's data as long as the same --service-name is used for both. Returns
+    // std::nullopt if the directory couldn't be created/secured, so callers don't persist or trust
+    // detach state in an unprotected location.
     // 
-    std::string GetDefaultDetachStateFilePath(const std::string& serviceName);
+    std::optional<std::string> GetDefaultDetachStateFilePath(const std::string& serviceName);
 
     std::expected<void, nefarius::utilities::Win32Error> WriteDetachStateFile(
         const std::string& stateFilePath, const std::vector<DetachedDeviceRecord>& records);
@@ -712,7 +714,20 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        const std::string stateFilePath = cmdl({"--state-file"}, GetDefaultDetachStateFilePath(serviceName)).str();
+        std::string stateFilePath;
+
+        if (!(cmdl({"--state-file"}) >> stateFilePath))
+        {
+            const auto defaultPath = GetDefaultDetachStateFilePath(serviceName);
+
+            if (!defaultPath)
+            {
+                logger->error("Failed to determine default state file location");
+                return EXIT_FAILURE;
+            }
+
+            stateFilePath = *defaultPath;
+        }
 
         const auto records = ReadDetachStateFile(stateFilePath);
 
@@ -1510,12 +1525,11 @@ namespace
     //
     // Restricts a directory to Administrators and SYSTEM only (replacing, not merging with, any
     // inherited ACEs). The state directory holds data that a later, elevated --reenumerate-affected
-    // invocation trusts without further validation, so it must not be writable by a non-admin user
-    // -- e.g. under %TEMP% for a SYSTEM/service context, which commonly resolves to the
-    // world-writable C:\Windows\Temp. Best-effort: failures are logged but don't abort the flow,
-    // consistent with the rest of this tool's philosophy.
+    // invocation trusts without further validation, so it must not be writable by a non-admin user.
+    // Returns false (and logs) on any failure, so the caller can refuse to persist state into an
+    // unprotected location instead of silently trusting it later.
     //
-    void RestrictDirectoryToAdminsAndSystem(const std::filesystem::path& dir)
+    bool RestrictDirectoryToAdminsAndSystem(const std::filesystem::path& dir)
     {
         el::Logger* logger = el::Loggers::getLogger("default");
 
@@ -1527,11 +1541,12 @@ namespace
             L"D:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)", SDDL_REVISION_1, &sd, nullptr))
         {
             logger->warn("Failed to build security descriptor for state directory, error: %v", GetLastError());
-            return;
+            return false;
         }
 
         PACL dacl = nullptr;
         BOOL daclPresent = FALSE, daclDefaulted = FALSE;
+        bool succeeded = false;
 
         if (GetSecurityDescriptorDacl(sd, &daclPresent, &dacl, &daclDefaulted) && daclPresent)
         {
@@ -1539,7 +1554,11 @@ namespace
                 const_cast<LPWSTR>(dir.c_str()), SE_FILE_OBJECT,
                 DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, nullptr, nullptr, dacl, nullptr);
 
-            if (result != ERROR_SUCCESS)
+            if (result == ERROR_SUCCESS)
+            {
+                succeeded = true;
+            }
+            else
             {
                 logger->warn("Failed to restrict permissions on state directory \"%v\", error: %v", dir.string(),
                              result);
@@ -1547,17 +1566,22 @@ namespace
         }
 
         LocalFree(sd);
+
+        return succeeded;
     }
 
     //
     // Derives a stable, per-service default location for the detach state file so
     // --remove-driver-service and --reenumerate-affected agree on where to look for each other's
-    // data when --state-file isn't passed explicitly to either. Placed under %ProgramData% (falling
-    // back to %TEMP%) and locked down to Administrators/SYSTEM, since this state is read back and
-    // trusted by a later elevated invocation.
+    // data when --state-file isn't passed explicitly to either. Placed under %ProgramData% and
+    // locked down to Administrators/SYSTEM, since this state is read back and trusted by a later
+    // elevated invocation. Fails closed (returns std::nullopt) rather than falling back to a
+    // location that couldn't be created or secured.
     // 
-    std::string GetDefaultDetachStateFilePath(const std::string& serviceName)
+    std::optional<std::string> GetDefaultDetachStateFilePath(const std::string& serviceName)
     {
+        el::Logger* logger = el::Loggers::getLogger("default");
+
         std::string sanitized;
         sanitized.reserve(serviceName.size());
 
@@ -1572,42 +1596,51 @@ namespace
             sanitized = "_";
         }
 
-        std::filesystem::path dir;
+        //
+        // Sanitization is lossy (e.g. "My Driver" and "My_Driver" both collapse to "My_Driver"), so
+        // append a hash of the original, unsanitized name to keep distinct service names from
+        // colliding on the same state file.
+        //
+        const size_t nameHash = std::hash<std::string>{}(serviceName);
+        char hashSuffix[2 * sizeof(size_t) + 1];
+        snprintf(hashSuffix, sizeof(hashSuffix), "%016zx", nameHash);
 
-        char* programData = nullptr;
-        size_t programDataLen = 0;
-        const bool hasProgramData =
-            _dupenv_s(&programData, &programDataLen, "ProgramData") == 0 && programData && *programData;
+        PWSTR programDataPath = nullptr;
+        const HRESULT hr = SHGetKnownFolderPath(FOLDERID_ProgramData, 0, nullptr, &programDataPath);
 
-        if (hasProgramData)
+        if (FAILED(hr))
         {
-            dir = programData;
-        }
-
-        free(programData);
-
-        if (!hasProgramData)
-        {
-            std::error_code tempEc;
-            dir = std::filesystem::temp_directory_path(tempEc);
-
-            if (tempEc)
+            if (programDataPath)
             {
-                dir = ".";
+                CoTaskMemFree(programDataPath);
             }
+
+            logger->error("Failed to determine %%ProgramData%% path, error: %v", hr);
+            return std::nullopt;
         }
+
+        std::filesystem::path dir(programDataPath);
+        CoTaskMemFree(programDataPath);
 
         dir /= "nefconc";
 
         std::error_code ec;
-        const bool created = std::filesystem::create_directories(dir, ec);
+        std::filesystem::create_directories(dir, ec);
 
-        if (created || !ec)
+        if (ec)
         {
-            RestrictDirectoryToAdminsAndSystem(dir);
+            logger->error("Failed to create state directory \"%v\", error: %v", dir.string(), ec.message());
+            return std::nullopt;
         }
 
-        dir /= (sanitized + ".detach.state");
+        if (!RestrictDirectoryToAdminsAndSystem(dir))
+        {
+            logger->error("Failed to secure state directory \"%v\"; refusing to persist detach state there",
+                         dir.string());
+            return std::nullopt;
+        }
+
+        dir /= (sanitized + "-" + hashSuffix + ".detach.state");
 
         return dir.string();
     }
@@ -1728,6 +1761,12 @@ namespace
             }
         }
 
+        if (file.bad())
+        {
+            return std::unexpected(
+                nefarius::utilities::Win32Error(ERROR_READ_FAULT, "I/O error while reading state file"));
+        }
+
         return records;
     }
 
@@ -1797,7 +1836,21 @@ namespace
             return;
         }
 
-        const std::string stateFilePath = cmdl({"--state-file"}, GetDefaultDetachStateFilePath(serviceName)).str();
+        std::string stateFilePath;
+
+        if (!(cmdl({"--state-file"}) >> stateFilePath))
+        {
+            const auto defaultPath = GetDefaultDetachStateFilePath(serviceName);
+
+            if (!defaultPath)
+            {
+                logger->error(
+                    "Failed to determine default state file location; detached device(s) cannot be re-enumerated automatically");
+                return;
+            }
+
+            stateFilePath = *defaultPath;
+        }
 
         if (const auto written = WriteDetachStateFile(stateFilePath, detached); !written)
         {
