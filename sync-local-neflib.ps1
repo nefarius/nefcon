@@ -12,23 +12,36 @@
 $ErrorActionPreference = "Stop"
 
 $scriptDir = $PSScriptRoot
-$neflibIncludeDir = Join-Path $scriptDir "neflib\include"
-$neflibSrcDir = Join-Path $scriptDir "neflib\src"
+$neflibRootDir = Join-Path $scriptDir "neflib"
+$neflibIncludeDir = Join-Path $neflibRootDir "include"
+$neflibSrcDir = Join-Path $neflibRootDir "src"
+$neflibVcxproj = Join-Path $neflibSrcDir "neflib.vcxproj"
 $portFilePath = Join-Path $scriptDir "ports\neflib\portfile.cmake"
 
-if (-not (Test-Path $neflibIncludeDir) -or -not (Test-Path $neflibSrcDir)) {
+if (-not (Test-Path $neflibIncludeDir -PathType Container) -or -not (Test-Path $neflibSrcDir -PathType Container)) {
     Write-Error "neflib submodule not found at '$scriptDir\neflib'. Run 'git submodule update --init neflib' first."
     exit 1
 }
 
-if (-not (Test-Path $portFilePath)) {
+if (-not (Test-Path $neflibVcxproj -PathType Leaf)) {
+    Write-Error "neflib\src\neflib.vcxproj not found. Run 'git submodule update --init neflib' first."
+    exit 1
+}
+
+if (-not (Test-Path $portFilePath -PathType Leaf)) {
     Write-Error "ports\neflib\portfile.cmake not found."
     exit 1
 }
 
-$files = @(Get-ChildItem -Path $neflibIncludeDir, $neflibSrcDir -Recurse -File |
-    Where-Object { $_.Extension -in ".h", ".hpp", ".cpp", ".vcxproj" } |
-    Sort-Object FullName)
+# Headers/sources/project files (recursive) plus the manifest and the MSBuild
+# Directory.Build.props/targets at the submodule root, which are auto-imported by
+# neflib.vcxproj and therefore also affect what gets built.
+$files = @(
+    @(Get-ChildItem -Path $neflibIncludeDir, $neflibSrcDir -Recurse -File |
+        Where-Object { $_.Extension -in ".h", ".hpp", ".cpp", ".vcxproj", ".filters", ".json" }) +
+    @(Get-ChildItem -Path $neflibRootDir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -in "Directory.Build.props", "Directory.Build.targets" })
+) | Sort-Object FullName
 
 # Avoid depending on the Get-FileHash cmdlet (Microsoft.PowerShell.Utility), which is not
 # guaranteed to be auto-loaded on every Windows PowerShell installation.
@@ -46,12 +59,27 @@ $bytes = [System.Text.Encoding]::UTF8.GetBytes($combinedHash)
 $finalHash = [System.BitConverter]::ToString($sha256.ComputeHash($bytes)).Replace("-", "").ToLowerInvariant()
 
 $content = Get-Content -Path $portFilePath -Raw
-$updated = $content -replace "# source-hash: [0-9a-f]+", "# source-hash: $finalHash"
+$markerMatches = [regex]::Matches($content, "# source-hash: ([0-9a-f]{64})")
 
-if ($updated -eq $content) {
-    Write-Host "portfile.cmake source-hash line not found or already matches, no changes made."
+if ($markerMatches.Count -ne 1) {
+    Write-Error "ports\neflib\portfile.cmake must contain exactly one '# source-hash: <64 hex chars>' marker, found $($markerMatches.Count). Cannot stamp the source hash."
+    exit 1
+}
+
+$currentHash = $markerMatches[0].Groups[1].Value
+
+if ($currentHash -eq $finalHash) {
+    Write-Host "portfile.cmake source-hash already up to date ($finalHash), no changes made."
 }
 else {
+    $match = $markerMatches[0]
+    $updated = $content.Substring(0, $match.Index) + "# source-hash: $finalHash" + $content.Substring($match.Index + $match.Length)
+
+    if ($updated -notmatch "# source-hash: $finalHash") {
+        Write-Error "Failed to stamp ports\neflib\portfile.cmake with the new source-hash."
+        exit 1
+    }
+
     Set-Content -Path $portFilePath -Value $updated -NoNewline
     Write-Host "Stamped ports\neflib\portfile.cmake with source-hash $finalHash (from $($files.Count) files)."
 }
