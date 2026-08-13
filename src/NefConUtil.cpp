@@ -55,11 +55,11 @@ namespace
                                                         std::chrono::milliseconds timeout);
 
     //
-    // Parses --restart-timeout, falling back to (and warning on) the 10s default for
+    // Parses a millisecond timeout argument, falling back to (and warning on) DefaultMs for
     // missing, non-numeric, or non-positive input, so a bad value can never turn into a
     // zero/negative std::chrono::milliseconds.
     //
-    int ParseRestartTimeoutMs(const argh::parser& cmdl);
+    int ParseTimeoutMs(const argh::parser& cmdl, const std::string& paramName, int defaultMs);
 
     //
     // Shared --attempt-restart-affected handling for --inf-default-install/-uninstall: merges
@@ -68,6 +68,42 @@ namespace
     // rebootRequired. No-op if --attempt-restart-affected wasn't passed.
     //
     void RestartAffectedDevicesForInf(const argh::parser& cmdl, const std::string& infPath, bool& rebootRequired);
+
+    //
+    // A single device detached from the system in preparation for a driver upgrade/removal,
+    // recorded so a later --reenumerate-affected invocation (possibly after the process/session
+    // that detached it has exited) can bring it back.
+    // 
+    struct DetachedDeviceRecord
+    {
+        std::wstring InstanceId;
+        std::wstring ParentInstanceId;
+    };
+
+    //
+    // Default --state-file location for a given service name, used when --state-file isn't
+    // passed explicitly, so --remove-driver-service and --reenumerate-affected agree on where to
+    // find each other's data as long as the same --service-name is used for both. Returns
+    // std::nullopt if the directory couldn't be created/secured, so callers don't persist or trust
+    // detach state in an unprotected location.
+    // 
+    std::optional<std::string> GetDefaultDetachStateFilePath(const std::string& serviceName);
+
+    std::expected<void, nefarius::utilities::Win32Error> WriteDetachStateFile(
+        const std::string& stateFilePath, const std::vector<DetachedDeviceRecord>& records);
+
+    std::expected<std::vector<DetachedDeviceRecord>, nefarius::utilities::Win32Error> ReadDetachStateFile(
+        const std::string& stateFilePath);
+
+    //
+    // --attempt-detach-affected handling for --remove-driver-service: enumerates every present
+    // device currently bound to serviceName, best-effort detaches each (releasing the driver's
+    // file locks) and persists the successfully detached ones' parent devnodes to a state file so
+    // --reenumerate-affected can bring them back later. Never blocks the caller from proceeding
+    // with stopping/deleting the service; a device that couldn't be detached just means a reboot
+    // may be required for the upgrade/removal to fully take effect.
+    //
+    void DetachAffectedDevicesForService(const argh::parser& cmdl, const std::string& serviceName);
 
 #if !defined(NEFCON_WINMAIN)
     void CustomizeEasyLoggingColoredConsole();
@@ -98,7 +134,9 @@ int main(int argc, char* argv[])
         "--bin-path",
         "--file-path",
         "--service-guid",
-        "--restart-timeout"
+        "--restart-timeout",
+        "--stop-timeout",
+        "--state-file"
     });
 
     auto cliArgs = nefarius::winapi::cli::GetCommandLineArgs();
@@ -397,7 +435,7 @@ int main(int argc, char* argv[])
         {
             if (cmdl[{"--attempt-restart-affected"}])
             {
-                const int restartTimeoutMs = ParseRestartTimeoutMs(cmdl);
+                const int restartTimeoutMs = ParseTimeoutMs(cmdl, "--restart-timeout", 10000);
 
                 const auto restartResult = RestartAffectedDevices(
                     {guid.value()}, std::chrono::milliseconds(restartTimeoutMs));
@@ -469,7 +507,7 @@ int main(int argc, char* argv[])
         {
             if (cmdl[{"--attempt-restart-affected"}])
             {
-                const int restartTimeoutMs = ParseRestartTimeoutMs(cmdl);
+                const int restartTimeoutMs = ParseTimeoutMs(cmdl, "--restart-timeout", 10000);
 
                 const auto restartResult = RestartAffectedDevices(
                     {guid.value()}, std::chrono::milliseconds(restartTimeoutMs));
@@ -635,15 +673,135 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (const auto result = nefarius::winapi::services::DeleteDriverService(serviceName); !result)
+        //
+        // Best-effort: releases the driver's file locks by detaching any device still bound to
+        // it before the service (and its .sys file) is stopped/deleted below. A device that
+        // couldn't be detached only means a reboot may still be required for the removal to
+        // fully take effect; it never blocks the stop/delete that follows.
+        // 
+        DetachAffectedDevicesForService(cmdl, serviceName);
+
+        const int stopTimeoutMs = ParseTimeoutMs(cmdl, "--stop-timeout", 10000);
+        bool rebootRequired = false;
+
+        if (const auto result = nefarius::winapi::services::DeleteDriverService(
+            serviceName, std::chrono::milliseconds(stopTimeoutMs), &rebootRequired); !result)
         {
             logger->error("Failed to remove driver service, error: %v", result.error().getErrorMessageA());
             return result.error().getErrorCode();
         }
 
+        if (rebootRequired)
+        {
+            logger->warn(
+                "Driver service marked for removal, but its driver never advertised support for being stopped live; a reboot is required to fully remove it");
+            return ERROR_SUCCESS_REBOOT_REQUIRED;
+        }
+
         logger->info("Driver service removed successfully");
 
         return EXIT_SUCCESS;
+    }
+
+    if (cmdl[{"--reenumerate-affected"}])
+    {
+        int errorCode;
+        if (!IsAdmin(errorCode)) return errorCode;
+
+        if (!(cmdl({"--service-name"}) >> serviceName))
+        {
+            logger->error("Service name missing");
+            return EXIT_FAILURE;
+        }
+
+        std::string stateFilePath;
+
+        if (!(cmdl({"--state-file"}) >> stateFilePath))
+        {
+            const auto defaultPath = GetDefaultDetachStateFilePath(serviceName);
+
+            if (!defaultPath)
+            {
+                logger->error("Failed to determine default state file location");
+                return EXIT_FAILURE;
+            }
+
+            stateFilePath = *defaultPath;
+        }
+
+        const auto records = ReadDetachStateFile(stateFilePath);
+
+        if (!records)
+        {
+            if (records.error().getErrorCode() == ERROR_FILE_NOT_FOUND)
+            {
+                logger->warn("Detach state file \"%v\" not found, nothing to re-enumerate", stateFilePath);
+                return EXIT_SUCCESS;
+            }
+
+            logger->error("Failed to read detach state file \"%v\", error: %v", stateFilePath,
+                         records.error().getErrorMessageA());
+            return records.error().getErrorCode();
+        }
+
+        if (records->empty())
+        {
+            logger->warn("Detach state file \"%v\" has no devices to re-enumerate", stateFilePath);
+            return EXIT_SUCCESS;
+        }
+
+        std::vector<std::wstring> parentInstanceIds;
+
+        for (const auto& record : records.value())
+        {
+            const bool alreadyPresent = std::any_of(parentInstanceIds.begin(), parentInstanceIds.end(),
+                                                     [&record](const std::wstring& existing)
+                                                     {
+                                                         return _wcsicmp(existing.c_str(),
+                                                                        record.ParentInstanceId.c_str()) == 0;
+                                                     });
+
+            if (!alreadyPresent)
+            {
+                parentInstanceIds.push_back(record.ParentInstanceId);
+            }
+        }
+
+        const int reenumerateTimeoutMs = ParseTimeoutMs(cmdl, "--restart-timeout", 10000);
+        bool anyFailed = false;
+
+        for (const auto& parentInstanceId : parentInstanceIds)
+        {
+            const auto result = nefarius::devcon::ReenumerateParentDevNode(
+                parentInstanceId, std::chrono::milliseconds(reenumerateTimeoutMs));
+
+            const std::string parentInstanceIdA = nefarius::utilities::ConvertWideToANSI(parentInstanceId);
+
+            if (result.Succeeded)
+            {
+                logger->info("Re-enumerated devnode \"%v\"", parentInstanceIdA);
+            }
+            else if (result.TimedOut)
+            {
+                anyFailed = true;
+                logger->warn("Timed out re-enumerating devnode \"%v\", a reboot may be required",
+                             parentInstanceIdA);
+            }
+            else
+            {
+                anyFailed = true;
+                logger->warn("Failed to re-enumerate devnode \"%v\", a reboot may be required", parentInstanceIdA);
+            }
+        }
+
+        //
+        // Single-use by design: whether or not every devnode could be re-enumerated, stale
+        // entries must not be replayed against a future, unrelated driver upgrade.
+        // 
+        std::error_code deleteEc;
+        std::filesystem::remove(stateFilePath, deleteEc);
+
+        return anyFailed ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
     }
 
     if (cmdl[{"--create-device-node"}])
@@ -1108,6 +1266,14 @@ int main(int argc, char* argv[])
     std::cout << "      --display-name           The friendly name of the service (required)" << '\n';
     std::cout << "    --remove-driver-service    Removes an existing kernel driver service" << '\n';
     std::cout << "      --service-name           The driver service name to remove (required)" << '\n';
+    std::cout << "      --stop-timeout           Milliseconds to wait for the service to stop, default 10000 (optional)" << '\n';
+    std::cout << "      --attempt-detach-affected Best-effort attempt to detach present devices bound to this service before removal, so its driver file can be safely replaced/deleted; a reboot may still be required (optional)" << '\n';
+    std::cout << "      --restart-timeout        Milliseconds to wait per device detach attempt, default 10000 (optional)" << '\n';
+    std::cout << "      --state-file             Where to persist detached devices for a later --reenumerate-affected call, default a per-service-name file in %TEMP%\\nefconc (optional)" << '\n';
+    std::cout << "    --reenumerate-affected     Re-enumerates devices previously detached via --remove-driver-service --attempt-detach-affected" << '\n';
+    std::cout << "      --service-name           The driver service name whose detached devices to re-enumerate (required)" << '\n';
+    std::cout << "      --restart-timeout        Milliseconds to wait per devnode re-enumeration attempt, default 10000 (optional)" << '\n';
+    std::cout << "      --state-file             Where to read detached devices from, default a per-service-name file in %TEMP%\\nefconc (optional)" << '\n';
     std::cout << "    --inf-default-install      Installs an INF file with a [DefaultInstall] section" << '\n';
     std::cout << "      --inf-path               Path to the INF file to install, absolute or relative to CWD (required)" << '\n';
     std::cout << "      --attempt-restart-affected Best-effort attempt to restart devices affected by any class filter changes; a reboot may still be required (optional)" << '\n';
@@ -1270,12 +1436,11 @@ namespace
         return summary;
     }
 
-    int ParseRestartTimeoutMs(const argh::parser& cmdl)
+    int ParseTimeoutMs(const argh::parser& cmdl, const std::string& paramName, int defaultMs)
     {
         el::Logger* logger = el::Loggers::getLogger("default");
 
-        constexpr int defaultTimeoutMs = 10000;
-        const std::string raw = cmdl({"--restart-timeout"}, std::to_string(defaultTimeoutMs)).str();
+        const std::string raw = cmdl({paramName}, std::to_string(defaultMs)).str();
 
         try
         {
@@ -1293,9 +1458,9 @@ namespace
         }
 
         logger->warn(
-            "Invalid --restart-timeout value \"%v\", expected a positive number of milliseconds; using default of %v ms",
-            raw, defaultTimeoutMs);
-        return defaultTimeoutMs;
+            "Invalid %v value \"%v\", expected a positive number of milliseconds; using default of %v ms",
+            paramName, raw, defaultMs);
+        return defaultMs;
     }
 
     void RestartAffectedDevicesForInf(const argh::parser& cmdl, const std::string& infPath, bool& rebootRequired)
@@ -1350,11 +1515,353 @@ namespace
             }
         }
 
-        const int restartTimeoutMs = ParseRestartTimeoutMs(cmdl);
+        const int restartTimeoutMs = ParseTimeoutMs(cmdl, "--restart-timeout", 10000);
 
         const auto restartResult = RestartAffectedDevices(classGuids, std::chrono::milliseconds(restartTimeoutMs));
 
         rebootRequired = rebootRequired || restartResult.AnyRebootRequired;
+    }
+
+    //
+    // Restricts a directory to Administrators and SYSTEM only (replacing, not merging with, any
+    // inherited ACEs). The state directory holds data that a later, elevated --reenumerate-affected
+    // invocation trusts without further validation, so it must not be writable by a non-admin user.
+    // Returns false (and logs) on any failure, so the caller can refuse to persist state into an
+    // unprotected location instead of silently trusting it later.
+    //
+    bool RestrictDirectoryToAdminsAndSystem(const std::filesystem::path& dir)
+    {
+        el::Logger* logger = el::Loggers::getLogger("default");
+
+        PSECURITY_DESCRIPTOR sd = nullptr;
+
+        // Protected DACL (no inheritance from parent) granting full control to Administrators (BA)
+        // and SYSTEM (SY) only.
+        if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            L"D:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)", SDDL_REVISION_1, &sd, nullptr))
+        {
+            logger->warn("Failed to build security descriptor for state directory, error: %v", GetLastError());
+            return false;
+        }
+
+        PACL dacl = nullptr;
+        BOOL daclPresent = FALSE, daclDefaulted = FALSE;
+        bool succeeded = false;
+
+        if (GetSecurityDescriptorDacl(sd, &daclPresent, &dacl, &daclDefaulted) && daclPresent)
+        {
+            const DWORD result = SetNamedSecurityInfoW(
+                const_cast<LPWSTR>(dir.c_str()), SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, nullptr, nullptr, dacl, nullptr);
+
+            if (result == ERROR_SUCCESS)
+            {
+                succeeded = true;
+            }
+            else
+            {
+                logger->warn("Failed to restrict permissions on state directory \"%v\", error: %v", dir.string(),
+                             result);
+            }
+        }
+
+        LocalFree(sd);
+
+        return succeeded;
+    }
+
+    //
+    // Derives a stable, per-service default location for the detach state file so
+    // --remove-driver-service and --reenumerate-affected agree on where to look for each other's
+    // data when --state-file isn't passed explicitly to either. Placed under %ProgramData% and
+    // locked down to Administrators/SYSTEM, since this state is read back and trusted by a later
+    // elevated invocation. Fails closed (returns std::nullopt) rather than falling back to a
+    // location that couldn't be created or secured.
+    // 
+    std::optional<std::string> GetDefaultDetachStateFilePath(const std::string& serviceName)
+    {
+        el::Logger* logger = el::Loggers::getLogger("default");
+
+        std::string sanitized;
+        sanitized.reserve(serviceName.size());
+
+        for (const char ch : serviceName)
+        {
+            sanitized.push_back(
+                (std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '_') ? ch : '_');
+        }
+
+        if (sanitized.empty())
+        {
+            sanitized = "_";
+        }
+
+        //
+        // Sanitization is lossy (e.g. "My Driver" and "My_Driver" both collapse to "My_Driver"), so
+        // append a hash of the original, unsanitized name to keep distinct service names from
+        // colliding on the same state file.
+        //
+        const size_t nameHash = std::hash<std::string>{}(serviceName);
+        char hashSuffix[2 * sizeof(size_t) + 1];
+        snprintf(hashSuffix, sizeof(hashSuffix), "%016zx", nameHash);
+
+        PWSTR programDataPath = nullptr;
+        const HRESULT hr = SHGetKnownFolderPath(FOLDERID_ProgramData, 0, nullptr, &programDataPath);
+
+        if (FAILED(hr))
+        {
+            if (programDataPath)
+            {
+                CoTaskMemFree(programDataPath);
+            }
+
+            logger->error("Failed to determine %%ProgramData%% path, error: %v", hr);
+            return std::nullopt;
+        }
+
+        std::filesystem::path dir(programDataPath);
+        CoTaskMemFree(programDataPath);
+
+        dir /= "nefconc";
+
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+
+        if (ec)
+        {
+            logger->error("Failed to create state directory \"%v\", error: %v", dir.string(), ec.message());
+            return std::nullopt;
+        }
+
+        if (!RestrictDirectoryToAdminsAndSystem(dir))
+        {
+            logger->error("Failed to secure state directory \"%v\"; refusing to persist detach state there",
+                         dir.string());
+            return std::nullopt;
+        }
+
+        dir /= (sanitized + "-" + hashSuffix + ".detach.state");
+
+        return dir.string();
+    }
+
+    //
+    // Instance IDs are round-tripped through the state file losslessly regardless of the active
+    // ANSI codepage by (de)serializing as UTF-8 directly, instead of going through
+    // ConvertWideToANSI/ConvertAnsiToWide (which use CP_ACP and can't represent every code point).
+    //
+    std::string ConvertWideToUTF8(const std::wstring& wide)
+    {
+        if (wide.empty())
+        {
+            return {};
+        }
+
+        const int size = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), nullptr, 0,
+                                              nullptr, nullptr);
+
+        if (size <= 0)
+        {
+            return {};
+        }
+
+        std::string result(size, '\0');
+        WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), result.data(), size, nullptr,
+                             nullptr);
+
+        return result;
+    }
+
+    std::wstring ConvertUTF8ToWide(const std::string& utf8)
+    {
+        if (utf8.empty())
+        {
+            return {};
+        }
+
+        const int size = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), static_cast<int>(utf8.size()), nullptr, 0);
+
+        if (size <= 0)
+        {
+            return {};
+        }
+
+        std::wstring result(size, L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), static_cast<int>(utf8.size()), result.data(), size);
+
+        return result;
+    }
+
+    std::expected<void, nefarius::utilities::Win32Error> WriteDetachStateFile(
+        const std::string& stateFilePath, const std::vector<DetachedDeviceRecord>& records)
+    {
+        std::ofstream file(stateFilePath, std::ios::out | std::ios::trunc | std::ios::binary);
+
+        if (!file.is_open())
+        {
+            return std::unexpected(
+                nefarius::utilities::Win32Error(ERROR_OPEN_FAILED, "Failed to open state file for writing"));
+        }
+
+        for (const auto& record : records)
+        {
+            file << ConvertWideToUTF8(record.InstanceId) << '\t'
+                << ConvertWideToUTF8(record.ParentInstanceId) << '\n';
+        }
+
+        file.close();
+
+        if (file.fail())
+        {
+            return std::unexpected(nefarius::utilities::Win32Error(ERROR_WRITE_FAULT, "Failed to write state file"));
+        }
+
+        return {};
+    }
+
+    std::expected<std::vector<DetachedDeviceRecord>, nefarius::utilities::Win32Error> ReadDetachStateFile(
+        const std::string& stateFilePath)
+    {
+        std::ifstream file(stateFilePath, std::ios::binary);
+
+        if (!file.is_open())
+        {
+            return std::unexpected(nefarius::utilities::Win32Error(ERROR_FILE_NOT_FOUND, "State file not found"));
+        }
+
+        std::vector<DetachedDeviceRecord> records;
+        std::string line;
+
+        while (std::getline(file, line))
+        {
+            if (!line.empty() && line.back() == '\r')
+            {
+                line.pop_back();
+            }
+
+            if (line.empty())
+            {
+                continue;
+            }
+
+            const auto tab = line.find('\t');
+
+            if (tab == std::string::npos)
+            {
+                continue;
+            }
+
+            DetachedDeviceRecord record;
+            record.InstanceId = ConvertUTF8ToWide(line.substr(0, tab));
+            record.ParentInstanceId = ConvertUTF8ToWide(line.substr(tab + 1));
+
+            if (!record.ParentInstanceId.empty())
+            {
+                records.push_back(std::move(record));
+            }
+        }
+
+        if (file.bad())
+        {
+            return std::unexpected(
+                nefarius::utilities::Win32Error(ERROR_READ_FAULT, "I/O error while reading state file"));
+        }
+
+        return records;
+    }
+
+    void DetachAffectedDevicesForService(const argh::parser& cmdl, const std::string& serviceName)
+    {
+        if (!cmdl[{"--attempt-detach-affected"}])
+        {
+            return;
+        }
+
+        el::Logger* logger = el::Loggers::getLogger("default");
+
+        const auto instances = nefarius::devcon::ListDeviceInstancesByService(
+            nefarius::utilities::ConvertAnsiToWide(serviceName));
+
+        if (!instances)
+        {
+            logger->warn("Failed to enumerate devices bound to service \"%v\", error: %v", serviceName,
+                         instances.error().getErrorMessageA());
+            return;
+        }
+
+        if (instances->empty())
+        {
+            logger->info("No present devices found bound to service \"%v\"", serviceName);
+            return;
+        }
+
+        const int detachTimeoutMs = ParseTimeoutMs(cmdl, "--restart-timeout", 10000);
+        std::vector<DetachedDeviceRecord> detached;
+
+        for (const auto& instanceId : instances.value())
+        {
+            const auto result = nefarius::devcon::DetachDeviceInstance(
+                instanceId, std::chrono::milliseconds(detachTimeoutMs));
+
+            const std::wstring displayName = result.FriendlyName.empty() ? result.InstanceId : result.FriendlyName;
+            const std::string displayNameA = nefarius::utilities::ConvertWideToANSI(displayName);
+
+            if (result.Succeeded)
+            {
+                logger->info("Detached device \"%v\"", displayNameA);
+                detached.push_back({result.InstanceId, result.ParentInstanceId});
+            }
+            else if (result.TimedOut)
+            {
+                logger->warn(
+                    "Timed out attempting to detach device \"%v\", a reboot may be required to complete this operation",
+                    displayNameA);
+            }
+            else if (!result.VetoName.empty())
+            {
+                logger->warn(
+                    "Could not detach device \"%v\", blocked by \"%v\", a reboot may be required to complete this operation",
+                    displayNameA, nefarius::utilities::ConvertWideToANSI(result.VetoName));
+            }
+            else
+            {
+                logger->warn("Could not detach device \"%v\", a reboot may be required to complete this operation",
+                             displayNameA);
+            }
+        }
+
+        if (detached.empty())
+        {
+            logger->warn("No devices could be detached; a reboot may be required to complete this operation");
+            return;
+        }
+
+        std::string stateFilePath;
+
+        if (!(cmdl({"--state-file"}) >> stateFilePath))
+        {
+            const auto defaultPath = GetDefaultDetachStateFilePath(serviceName);
+
+            if (!defaultPath)
+            {
+                logger->error(
+                    "Failed to determine default state file location; detached device(s) cannot be re-enumerated automatically");
+                return;
+            }
+
+            stateFilePath = *defaultPath;
+        }
+
+        if (const auto written = WriteDetachStateFile(stateFilePath, detached); !written)
+        {
+            logger->error("Failed to write detach state file \"%v\", error: %v", stateFilePath,
+                         written.error().getErrorMessageA());
+            return;
+        }
+
+        logger->info(
+            "Detached %v device(s); run --reenumerate-affected --service-name %v after replacing the driver to bring them back",
+            detached.size(), serviceName);
     }
 
     /**

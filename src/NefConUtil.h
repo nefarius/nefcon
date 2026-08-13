@@ -14,6 +14,9 @@
 #include <shellapi.h>
 #include <io.h>
 #include <bluetoothapis.h>
+#include <aclapi.h>
+#include <sddl.h>
+#include <shlobj.h>
 
 //
 // Device class interfaces
@@ -25,13 +28,17 @@
 // STL
 // 
 #include <iostream>
+#include <fstream>
+#include <filesystem>
 #include <algorithm>
+#include <cctype>
 #include <vector>
 #include <string>
 #include <optional>
 #include <expected>
 #include <variant>
 #include <chrono>
+#include <functional>
 
 //
 // Add some colors to console
