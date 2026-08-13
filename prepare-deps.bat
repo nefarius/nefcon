@@ -25,7 +25,9 @@ if "%NEFCON_LOCAL_NEFLIB%"=="1" (
  echo Local neflib mode enabled ^(NEFCON_LOCAL_NEFLIB=1^), overlaying ports\neflib...
  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sync-local-neflib.ps1"
  if errorlevel 1 exit /b 1
- set "VCPKG_OVERLAY_OPTIONS=--overlay-ports=%~dp0ports"
+ REM Relative to the repo root (we already "cd /d" there above), so this stays a single,
+ REM space-safe argument regardless of where the repo is checked out.
+ set "VCPKG_OVERLAY_OPTIONS=--overlay-ports=ports"
 )
 
 if not exist "vcpkg\vcpkg.exe" (

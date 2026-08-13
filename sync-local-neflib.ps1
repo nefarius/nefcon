@@ -36,9 +36,10 @@ $sha256 = [System.Security.Cryptography.SHA256]::Create()
 $combinedHash = ""
 
 foreach ($file in $files) {
+    $relativePath = $file.FullName.Substring($scriptDir.Length).TrimStart("\", "/")
     $fileBytes = [System.IO.File]::ReadAllBytes($file.FullName)
     $fileHash = [System.BitConverter]::ToString($sha256.ComputeHash($fileBytes)).Replace("-", "")
-    $combinedHash += "$($file.FullName)|$fileHash`n"
+    $combinedHash += "$relativePath|$fileHash`n"
 }
 
 $bytes = [System.Text.Encoding]::UTF8.GetBytes($combinedHash)

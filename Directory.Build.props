@@ -7,6 +7,6 @@
    gets invalidated; see ports/neflib/portfile.cmake for why that's necessary.
  -->
  <PropertyGroup Condition="'$(NEFCON_LOCAL_NEFLIB)' == '1'">
-   <VcpkgAdditionalInstallOptions>$(VcpkgAdditionalInstallOptions) --overlay-ports=$(MSBuildThisFileDirectory)ports</VcpkgAdditionalInstallOptions>
+   <VcpkgAdditionalInstallOptions>$(VcpkgAdditionalInstallOptions) --overlay-ports="$(MSBuildThisFileDirectory)ports"</VcpkgAdditionalInstallOptions>
  </PropertyGroup>
 </Project>

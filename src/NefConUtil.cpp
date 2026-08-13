@@ -3,6 +3,7 @@
 // ReSharper disable CppClangTidyHicppAvoidGoto
 #include "NefConUtil.h"
 
+#include <algorithm>
 #include <numeric>
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
@@ -52,6 +53,21 @@ namespace
     // 
     RestartAffectedDevicesResult RestartAffectedDevices(const std::vector<GUID>& classGuids,
                                                         std::chrono::milliseconds timeout);
+
+    //
+    // Parses --restart-timeout, falling back to (and warning on) the 10s default for
+    // missing, non-numeric, or non-positive input, so a bad value can never turn into a
+    // zero/negative std::chrono::milliseconds.
+    //
+    int ParseRestartTimeoutMs(const argh::parser& cmdl);
+
+    //
+    // Shared --attempt-restart-affected handling for --inf-default-install/-uninstall: merges
+    // class GUIDs discovered from the INF's class filter directives with an optional explicit
+    // --class-guid (deduplicated), then restarts affected devices and folds the result into
+    // rebootRequired. No-op if --attempt-restart-affected wasn't passed.
+    //
+    void RestartAffectedDevicesForInf(const argh::parser& cmdl, const std::string& infPath, bool& rebootRequired);
 
 #if !defined(NEFCON_WINMAIN)
     void CustomizeEasyLoggingColoredConsole();
@@ -381,8 +397,7 @@ int main(int argc, char* argv[])
         {
             if (cmdl[{"--attempt-restart-affected"}])
             {
-                int restartTimeoutMs = 10000;
-                cmdl({"--restart-timeout"}, 10000) >> restartTimeoutMs;
+                const int restartTimeoutMs = ParseRestartTimeoutMs(cmdl);
 
                 const auto restartResult = RestartAffectedDevices(
                     {guid.value()}, std::chrono::milliseconds(restartTimeoutMs));
@@ -454,8 +469,7 @@ int main(int argc, char* argv[])
         {
             if (cmdl[{"--attempt-restart-affected"}])
             {
-                int restartTimeoutMs = 10000;
-                cmdl({"--restart-timeout"}, 10000) >> restartTimeoutMs;
+                const int restartTimeoutMs = ParseRestartTimeoutMs(cmdl);
 
                 const auto restartResult = RestartAffectedDevices(
                     {guid.value()}, std::chrono::milliseconds(restartTimeoutMs));
@@ -800,39 +814,7 @@ int main(int argc, char* argv[])
             logger->info("INF file installed successfully, but a reboot is required");
         }
 
-        if (cmdl[{"--attempt-restart-affected"}])
-        {
-            std::vector<GUID> classGuids;
-
-            if (const auto targets = nefarius::devcon::GetInfClassFilterTargets(
-                nefarius::utilities::ConvertAnsiToWide(infPath)); targets)
-            {
-                for (const auto& target : targets.value())
-                {
-                    classGuids.push_back(target.ClassGuid);
-                }
-            }
-            else
-            {
-                logger->warn("Failed to determine affected device class(es) from INF, error: %v",
-                             targets.error().getErrorMessageA());
-            }
-
-            if (const auto explicitClassGuid = cmdl({"--class-guid"}).str(); !explicitClassGuid.empty())
-            {
-                if (const auto guid = nefarius::winapi::GUIDFromString(explicitClassGuid); guid)
-                {
-                    classGuids.push_back(guid.value());
-                }
-            }
-
-            int restartTimeoutMs = 10000;
-            cmdl({"--restart-timeout"}, 10000) >> restartTimeoutMs;
-
-            const auto restartResult = RestartAffectedDevices(classGuids, std::chrono::milliseconds(restartTimeoutMs));
-
-            rebootRequired = rebootRequired || restartResult.AnyRebootRequired;
-        }
+        RestartAffectedDevicesForInf(cmdl, infPath, rebootRequired);
 
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
     }
@@ -882,39 +864,7 @@ int main(int argc, char* argv[])
             logger->info("INF file uninstalled successfully, but a reboot is required");
         }
 
-        if (cmdl[{"--attempt-restart-affected"}])
-        {
-            std::vector<GUID> classGuids;
-
-            if (const auto targets = nefarius::devcon::GetInfClassFilterTargets(
-                nefarius::utilities::ConvertAnsiToWide(infPath)); targets)
-            {
-                for (const auto& target : targets.value())
-                {
-                    classGuids.push_back(target.ClassGuid);
-                }
-            }
-            else
-            {
-                logger->warn("Failed to determine affected device class(es) from INF, error: %v",
-                             targets.error().getErrorMessageA());
-            }
-
-            if (const auto explicitClassGuid = cmdl({"--class-guid"}).str(); !explicitClassGuid.empty())
-            {
-                if (const auto guid = nefarius::winapi::GUIDFromString(explicitClassGuid); guid)
-                {
-                    classGuids.push_back(guid.value());
-                }
-            }
-
-            int restartTimeoutMs = 10000;
-            cmdl({"--restart-timeout"}, 10000) >> restartTimeoutMs;
-
-            const auto restartResult = RestartAffectedDevices(classGuids, std::chrono::milliseconds(restartTimeoutMs));
-
-            rebootRequired = rebootRequired || restartResult.AnyRebootRequired;
-        }
+        RestartAffectedDevicesForInf(cmdl, infPath, rebootRequired);
 
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
     }
@@ -1143,14 +1093,14 @@ int main(int argc, char* argv[])
     std::cout << "                                 Valid values include: upper|lower" << '\n';
     std::cout << "      --service-name           The driver service name to insert (required)" << '\n';
     std::cout << "      --class-guid             Device Class GUID to modify (required)" << '\n';
-    std::cout << "      --attempt-restart-affected Attempt to restart present devices of this class instead of requiring a reboot (optional)" << '\n';
+    std::cout << "      --attempt-restart-affected Best-effort attempt to restart present devices of this class; a reboot may still be required (optional)" << '\n';
     std::cout << "      --restart-timeout        Milliseconds to wait per device restart attempt, default 10000 (optional)" << '\n';
     std::cout << "    --remove-class-filter      Removes a service to a device class' filter collection" << '\n';
     std::cout << "      --position               Which filter to modify (required)" << '\n';
     std::cout << "                                 Valid values include: upper|lower" << '\n';
     std::cout << "      --service-name           The driver service name to insert (required)" << '\n';
     std::cout << "      --class-guid             Device Class GUID to modify (required)" << '\n';
-    std::cout << "      --attempt-restart-affected Attempt to restart present devices of this class instead of requiring a reboot (optional)" << '\n';
+    std::cout << "      --attempt-restart-affected Best-effort attempt to restart present devices of this class; a reboot may still be required (optional)" << '\n';
     std::cout << "      --restart-timeout        Milliseconds to wait per device restart attempt, default 10000 (optional)" << '\n';
     std::cout << "    --create-driver-service    Creates a new service with a kernel driver as binary" << '\n';
     std::cout << "      --bin-path               Path to the .sys file, absolute or relative to CWD (required)" << '\n';
@@ -1160,12 +1110,12 @@ int main(int argc, char* argv[])
     std::cout << "      --service-name           The driver service name to remove (required)" << '\n';
     std::cout << "    --inf-default-install      Installs an INF file with a [DefaultInstall] section" << '\n';
     std::cout << "      --inf-path               Path to the INF file to install, absolute or relative to CWD (required)" << '\n';
-    std::cout << "      --attempt-restart-affected Attempt to restart devices affected by any class filter changes instead of requiring a reboot (optional)" << '\n';
+    std::cout << "      --attempt-restart-affected Best-effort attempt to restart devices affected by any class filter changes; a reboot may still be required (optional)" << '\n';
     std::cout << "      --class-guid             Additional Device Class GUID to restart devices for, on top of what the INF declares (optional)" << '\n';
     std::cout << "      --restart-timeout        Milliseconds to wait per device restart attempt, default 10000 (optional)" << '\n';
     std::cout << "    --inf-default-uninstall    Uninstalls an INF file with a [DefaultUninstall] section" << '\n';
     std::cout << "      --inf-path               Path to the INF file to uninstall, absolute or relative to CWD (required)" << '\n';
-    std::cout << "      --attempt-restart-affected Attempt to restart devices affected by any class filter changes instead of requiring a reboot (optional)" << '\n';
+    std::cout << "      --attempt-restart-affected Best-effort attempt to restart devices affected by any class filter changes; a reboot may still be required (optional)" << '\n';
     std::cout << "      --class-guid             Additional Device Class GUID to restart devices for, on top of what the INF declares (optional)" << '\n';
     std::cout << "      --restart-timeout        Milliseconds to wait per device restart attempt, default 10000 (optional)" << '\n';
     std::cout << "    --delete-file-on-reboot    Marks a given file to get deleted on next reboot" << '\n';
@@ -1269,8 +1219,11 @@ namespace
 
             if (!instances)
             {
-                logger->warn("Failed to enumerate devices for a class, error: %v",
-                             instances.error().getErrorMessageA());
+                WCHAR guidStr[64];
+                StringFromGUID2(classGuid, guidStr, ARRAYSIZE(guidStr));
+
+                logger->warn("Failed to enumerate devices for class %v, error: %v",
+                             nefarius::utilities::ConvertWideToANSI(guidStr), instances.error().getErrorMessageA());
                 continue;
             }
 
@@ -1315,6 +1268,93 @@ namespace
         }
 
         return summary;
+    }
+
+    int ParseRestartTimeoutMs(const argh::parser& cmdl)
+    {
+        el::Logger* logger = el::Loggers::getLogger("default");
+
+        constexpr int defaultTimeoutMs = 10000;
+        const std::string raw = cmdl({"--restart-timeout"}, std::to_string(defaultTimeoutMs)).str();
+
+        try
+        {
+            size_t consumed = 0;
+            const int parsed = std::stoi(raw, &consumed);
+
+            if (consumed == raw.size() && parsed > 0)
+            {
+                return parsed;
+            }
+        }
+        catch (const std::exception&)
+        {
+            // fall through to the warning/default below
+        }
+
+        logger->warn(
+            "Invalid --restart-timeout value \"%v\", expected a positive number of milliseconds; using default of %v ms",
+            raw, defaultTimeoutMs);
+        return defaultTimeoutMs;
+    }
+
+    void RestartAffectedDevicesForInf(const argh::parser& cmdl, const std::string& infPath, bool& rebootRequired)
+    {
+        if (!cmdl[{"--attempt-restart-affected"}])
+        {
+            return;
+        }
+
+        el::Logger* logger = el::Loggers::getLogger("default");
+
+        std::vector<GUID> classGuids;
+
+        const auto addUnique = [&classGuids](const GUID& candidate)
+        {
+            const bool alreadyPresent = std::any_of(classGuids.begin(), classGuids.end(),
+                                                     [&candidate](const GUID& existing)
+                                                     {
+                                                         return IsEqualGUID(existing, candidate);
+                                                     });
+
+            if (!alreadyPresent)
+            {
+                classGuids.push_back(candidate);
+            }
+        };
+
+        if (const auto targets = nefarius::devcon::GetInfClassFilterTargets(
+            nefarius::utilities::ConvertAnsiToWide(infPath)); targets)
+        {
+            for (const auto& target : targets.value())
+            {
+                addUnique(target.ClassGuid);
+            }
+        }
+        else
+        {
+            logger->warn("Failed to determine affected device class(es) from INF, error: %v",
+                         targets.error().getErrorMessageA());
+        }
+
+        if (const auto explicitClassGuid = cmdl({"--class-guid"}).str(); !explicitClassGuid.empty())
+        {
+            if (const auto guid = nefarius::winapi::GUIDFromString(explicitClassGuid); guid)
+            {
+                addUnique(guid.value());
+            }
+            else
+            {
+                logger->error("Invalid --class-guid value \"%v\", error: %v", explicitClassGuid,
+                             guid.error().getErrorMessageA());
+            }
+        }
+
+        const int restartTimeoutMs = ParseRestartTimeoutMs(cmdl);
+
+        const auto restartResult = RestartAffectedDevices(classGuids, std::chrono::milliseconds(restartTimeoutMs));
+
+        rebootRequired = rebootRequired || restartResult.AnyRebootRequired;
     }
 
     /**
