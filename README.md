@@ -94,6 +94,7 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 | `--remove-class-filter` | Remove upper/lower filter |
 | `--create-driver-service` | Create kernel driver service |
 | `--remove-driver-service` | Delete kernel driver service |
+| `--reenumerate-affected` | Bring back devices detached via `--remove-driver-service --attempt-detach-affected` |
 | `--delete-file-on-reboot` | Schedule file deletion on next reboot |
 | `--find-hwid` | Search devices by partial hardware ID (no admin) |
 | `--enable-bluetooth-service` | Enable local Bluetooth service |
@@ -160,9 +161,20 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 - **Required:** `--bin-path` (path to .sys), `--service-name`, `--display-name`
 - **Pitfalls:** Binary must exist; does not start the service
 
-**`--remove-driver-service`** — Deletes a kernel driver service.
+**`--remove-driver-service`** — Stops (waiting for `SERVICE_STOPPED`) and deletes a kernel driver service.
 
 - **Required:** `--service-name`
+- **Optional:** `--stop-timeout` — milliseconds to wait for the service to stop before giving up, default `10000`
+- **Optional:** `--attempt-detach-affected` — before stopping/deleting the service, best-effort detach every present device currently bound to it (releasing the driver's file locks so the .sys can be safely replaced/deleted), best-effort (a reboot may still be required for devices that could not be detached); successfully detached devices are recorded to a state file for a later `--reenumerate-affected` call. `--restart-timeout` sets the per-device detach timeout in milliseconds (default `10000`); `--state-file` overrides where the state is written (default a per-service-name file under `%TEMP%\nefconc`)
+- **Pitfalls:** Stopping the service does not by itself release devnodes still bound to it; use `--attempt-detach-affected` if you intend to replace or delete the driver's files afterwards. Some drivers never advertise support for being stopped live (no unload routine) — the service is still marked for deletion in that case, but a reboot is required to fully remove it (reflected in the exit code)
+- **When to use:** Live driver upgrades/removal — pair with `--reenumerate-affected` after replacing the driver files
+
+**`--reenumerate-affected`** — Re-enumerates the parent devnodes of devices previously detached via `--remove-driver-service --attempt-detach-affected`, making Windows re-discover and re-bind a driver to them (e.g. after replacing the `.sys` file). Single-use: the state file is deleted after processing, whether or not every devnode could be re-enumerated.
+
+- **Required:** `--service-name` — must match the one used with `--attempt-detach-affected`
+- **Optional:** `--restart-timeout` — milliseconds to wait per devnode re-enumeration attempt, default `10000`; `--state-file` overrides where the state is read from (default matches `--remove-driver-service`'s default)
+- **Pitfalls:** If the state file is missing (e.g. `--attempt-detach-affected` detached nothing), the command fails; a devnode that could not be re-enumerated may require a reboot
+- **When to use:** After replacing/upgrading a driver's files following a `--remove-driver-service --attempt-detach-affected` detach
 
 ### Utilities
 
@@ -248,6 +260,12 @@ nefconw --add-class-filter --position upper --service-name HidHide --class-guid 
 ```text
 nefconw --create-driver-service --bin-path "C:\Drivers\MyDriver.sys" --service-name MyDriver --display-name "My Driver"
 nefconw --remove-driver-service --service-name MyDriver
+
+# Live driver upgrade: detach bound devices first so the .sys can be safely replaced, then bring them back
+nefconw --remove-driver-service --service-name MyDriver --attempt-detach-affected
+copy /y "C:\Drivers\MyDriver-new.sys" "C:\Drivers\MyDriver.sys"
+nefconw --create-driver-service --bin-path "C:\Drivers\MyDriver.sys" --service-name MyDriver --display-name "My Driver"
+nefconw --reenumerate-affected --service-name MyDriver
 ```
 
 ### Utilities

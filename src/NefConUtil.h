@@ -25,7 +25,10 @@
 // STL
 // 
 #include <iostream>
+#include <fstream>
+#include <filesystem>
 #include <algorithm>
+#include <cctype>
 #include <vector>
 #include <string>
 #include <optional>
