@@ -261,7 +261,9 @@ nefconw --add-class-filter --position upper --service-name HidHide --class-guid 
 nefconw --create-driver-service --bin-path "C:\Drivers\MyDriver.sys" --service-name MyDriver --display-name "My Driver"
 nefconw --remove-driver-service --service-name MyDriver
 
-# Live driver upgrade: detach bound devices first so the .sys can be safely replaced, then bring them back
+# Live driver upgrade: detach bound devices first so the .sys can be safely replaced, then bring them back.
+# Check the exit code before continuing: 0 means removal succeeded; ERROR_SUCCESS_REBOOT_REQUIRED (3010)
+# or any other nonzero value means stop here and reboot / resolve the error before retrying the sequence.
 nefconw --remove-driver-service --service-name MyDriver --attempt-detach-affected
 copy /y "C:\Drivers\MyDriver-new.sys" "C:\Drivers\MyDriver.sys"
 nefconw --create-driver-service --bin-path "C:\Drivers\MyDriver.sys" --service-name MyDriver --display-name "My Driver"

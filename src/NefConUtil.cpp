@@ -718,6 +718,12 @@ int main(int argc, char* argv[])
 
         if (!records)
         {
+            if (records.error().getErrorCode() == ERROR_FILE_NOT_FOUND)
+            {
+                logger->warn("Detach state file \"%v\" not found, nothing to re-enumerate", stateFilePath);
+                return EXIT_SUCCESS;
+            }
+
             logger->error("Failed to read detach state file \"%v\", error: %v", stateFilePath,
                          records.error().getErrorMessageA());
             return records.error().getErrorCode();
@@ -1502,9 +1508,53 @@ namespace
     }
 
     //
+    // Restricts a directory to Administrators and SYSTEM only (replacing, not merging with, any
+    // inherited ACEs). The state directory holds data that a later, elevated --reenumerate-affected
+    // invocation trusts without further validation, so it must not be writable by a non-admin user
+    // -- e.g. under %TEMP% for a SYSTEM/service context, which commonly resolves to the
+    // world-writable C:\Windows\Temp. Best-effort: failures are logged but don't abort the flow,
+    // consistent with the rest of this tool's philosophy.
+    //
+    void RestrictDirectoryToAdminsAndSystem(const std::filesystem::path& dir)
+    {
+        el::Logger* logger = el::Loggers::getLogger("default");
+
+        PSECURITY_DESCRIPTOR sd = nullptr;
+
+        // Protected DACL (no inheritance from parent) granting full control to Administrators (BA)
+        // and SYSTEM (SY) only.
+        if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            L"D:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)", SDDL_REVISION_1, &sd, nullptr))
+        {
+            logger->warn("Failed to build security descriptor for state directory, error: %v", GetLastError());
+            return;
+        }
+
+        PACL dacl = nullptr;
+        BOOL daclPresent = FALSE, daclDefaulted = FALSE;
+
+        if (GetSecurityDescriptorDacl(sd, &daclPresent, &dacl, &daclDefaulted) && daclPresent)
+        {
+            const DWORD result = SetNamedSecurityInfoW(
+                const_cast<LPWSTR>(dir.c_str()), SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, nullptr, nullptr, dacl, nullptr);
+
+            if (result != ERROR_SUCCESS)
+            {
+                logger->warn("Failed to restrict permissions on state directory \"%v\", error: %v", dir.string(),
+                             result);
+            }
+        }
+
+        LocalFree(sd);
+    }
+
+    //
     // Derives a stable, per-service default location for the detach state file so
     // --remove-driver-service and --reenumerate-affected agree on where to look for each other's
-    // data when --state-file isn't passed explicitly to either.
+    // data when --state-file isn't passed explicitly to either. Placed under %ProgramData% (falling
+    // back to %TEMP%) and locked down to Administrators/SYSTEM, since this state is read back and
+    // trusted by a later elevated invocation.
     // 
     std::string GetDefaultDetachStateFilePath(const std::string& serviceName)
     {
@@ -1522,26 +1572,97 @@ namespace
             sanitized = "_";
         }
 
-        std::error_code ec;
-        std::filesystem::path dir = std::filesystem::temp_directory_path(ec);
+        std::filesystem::path dir;
 
-        if (ec)
+        char* programData = nullptr;
+        size_t programDataLen = 0;
+        const bool hasProgramData =
+            _dupenv_s(&programData, &programDataLen, "ProgramData") == 0 && programData && *programData;
+
+        if (hasProgramData)
         {
-            dir = ".";
+            dir = programData;
+        }
+
+        free(programData);
+
+        if (!hasProgramData)
+        {
+            std::error_code tempEc;
+            dir = std::filesystem::temp_directory_path(tempEc);
+
+            if (tempEc)
+            {
+                dir = ".";
+            }
         }
 
         dir /= "nefconc";
-        std::filesystem::create_directories(dir, ec);
+
+        std::error_code ec;
+        const bool created = std::filesystem::create_directories(dir, ec);
+
+        if (created || !ec)
+        {
+            RestrictDirectoryToAdminsAndSystem(dir);
+        }
 
         dir /= (sanitized + ".detach.state");
 
         return dir.string();
     }
 
+    //
+    // Instance IDs are round-tripped through the state file losslessly regardless of the active
+    // ANSI codepage by (de)serializing as UTF-8 directly, instead of going through
+    // ConvertWideToANSI/ConvertAnsiToWide (which use CP_ACP and can't represent every code point).
+    //
+    std::string ConvertWideToUTF8(const std::wstring& wide)
+    {
+        if (wide.empty())
+        {
+            return {};
+        }
+
+        const int size = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), nullptr, 0,
+                                              nullptr, nullptr);
+
+        if (size <= 0)
+        {
+            return {};
+        }
+
+        std::string result(size, '\0');
+        WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), result.data(), size, nullptr,
+                             nullptr);
+
+        return result;
+    }
+
+    std::wstring ConvertUTF8ToWide(const std::string& utf8)
+    {
+        if (utf8.empty())
+        {
+            return {};
+        }
+
+        const int size = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), static_cast<int>(utf8.size()), nullptr, 0);
+
+        if (size <= 0)
+        {
+            return {};
+        }
+
+        std::wstring result(size, L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), static_cast<int>(utf8.size()), result.data(), size);
+
+        return result;
+    }
+
     std::expected<void, nefarius::utilities::Win32Error> WriteDetachStateFile(
         const std::string& stateFilePath, const std::vector<DetachedDeviceRecord>& records)
     {
-        std::ofstream file(stateFilePath, std::ios::out | std::ios::trunc);
+        std::ofstream file(stateFilePath, std::ios::out | std::ios::trunc | std::ios::binary);
 
         if (!file.is_open())
         {
@@ -1551,11 +1672,13 @@ namespace
 
         for (const auto& record : records)
         {
-            file << nefarius::utilities::ConvertWideToANSI(record.InstanceId) << '\t'
-                << nefarius::utilities::ConvertWideToANSI(record.ParentInstanceId) << '\n';
+            file << ConvertWideToUTF8(record.InstanceId) << '\t'
+                << ConvertWideToUTF8(record.ParentInstanceId) << '\n';
         }
 
-        if (!file.good())
+        file.close();
+
+        if (file.fail())
         {
             return std::unexpected(nefarius::utilities::Win32Error(ERROR_WRITE_FAULT, "Failed to write state file"));
         }
@@ -1566,7 +1689,7 @@ namespace
     std::expected<std::vector<DetachedDeviceRecord>, nefarius::utilities::Win32Error> ReadDetachStateFile(
         const std::string& stateFilePath)
     {
-        std::ifstream file(stateFilePath);
+        std::ifstream file(stateFilePath, std::ios::binary);
 
         if (!file.is_open())
         {
@@ -1578,6 +1701,11 @@ namespace
 
         while (std::getline(file, line))
         {
+            if (!line.empty() && line.back() == '\r')
+            {
+                line.pop_back();
+            }
+
             if (line.empty())
             {
                 continue;
@@ -1591,8 +1719,8 @@ namespace
             }
 
             DetachedDeviceRecord record;
-            record.InstanceId = nefarius::utilities::ConvertAnsiToWide(line.substr(0, tab));
-            record.ParentInstanceId = nefarius::utilities::ConvertAnsiToWide(line.substr(tab + 1));
+            record.InstanceId = ConvertUTF8ToWide(line.substr(0, tab));
+            record.ParentInstanceId = ConvertUTF8ToWide(line.substr(tab + 1));
 
             if (!record.ParentInstanceId.empty())
             {

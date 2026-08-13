@@ -14,6 +14,8 @@
 #include <shellapi.h>
 #include <io.h>
 #include <bluetoothapis.h>
+#include <aclapi.h>
+#include <sddl.h>
 
 //
 // Device class interfaces
