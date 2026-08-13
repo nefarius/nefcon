@@ -59,6 +59,7 @@ Binaries are available to download in the [releases](https://github.com/nefarius
 
 ### Scoop
 
+> [!IMPORTANT]  
 > This is a community-maintained source and might lag behind GitHub releases.
 
 [`nefcon`](https://scoop.sh/#/apps?q=nefcon&s=0&d=1&o=true) is available in the [Extras](https://github.com/ScoopInstaller/Extras) bucket:
@@ -70,6 +71,7 @@ scoop install nefcon
 
 ### Winget
 
+> [!IMPORTANT]  
 > This is a community-maintained source and might lag behind GitHub releases.
 
 [`nefcon`](https://github.com/microsoft/winget-pkgs/tree/master/manifests/n/Nefarius/nefcon) is available in the [winget-pkgs](https://github.com/microsoft/winget-pkgs) repository:
