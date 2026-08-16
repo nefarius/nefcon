@@ -94,6 +94,8 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 | `--remove-device-node` | Remove all matching devices and driver; cleans driver store when unused |
 | `--add-class-filter` | Add upper/lower filter to device class |
 | `--remove-class-filter` | Remove upper/lower filter |
+| `--install-filter-driver` | Atomic INF-based filter driver install; race-safe against slow service startup |
+| `--uninstall-filter-driver` | Atomic filter removal; never leaves a dangling filter entry, race-safe against slow service teardown |
 | `--create-driver-service` | Create kernel driver service |
 | `--remove-driver-service` | Delete kernel driver service |
 | `--reenumerate-affected` | Bring back devices detached via `--remove-driver-service --attempt-detach-affected` |
@@ -155,6 +157,24 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 
 - **Required:** Same as `--add-class-filter`
 - **Optional:** Same as `--add-class-filter`
+
+### Atomic filter driver install/remove
+
+These two commands wrap the same underlying operations as the sections above, but as a single atomic, race-safe step. Prefer them over the individual `--inf-default-install` / `--add-class-filter` / `--remove-class-filter` / `--remove-driver-service` sequences for filter drivers, unless you need to interleave custom steps.
+
+**`--install-filter-driver`** — Installs an INF-based filter driver (equivalent to `--inf-default-install --attempt-restart-affected`), then waits for every filter service the INF declares to settle into a state the caller can trust before returning, instead of the caller having to probe it immediately afterwards.
+
+- **Required:** `--inf-path`
+- **Optional:** `--class-guid` — additional Device Class GUID to restart/settle, on top of what the INF declares; `--restart-timeout` — milliseconds to wait per device restart attempt, default `10000`; `--health-timeout` — milliseconds to wait for each declared filter service to reach `SERVICE_RUNNING` when a device of its class is present, default `10000`
+- **Behavior:** A filter service is only expected to reach `SERVICE_RUNNING` if a device of its class is currently present. If no device of that class is present, the service is expected to remain registered but stopped (demand-started) — that is logged, not reported as an error. This is the fix for a caller that immediately checks "is the service present and running" right after install and mistakes a legitimately-still-starting or legitimately-not-yet-started service for a failed install.
+- **When to use:** Installing a class filter driver (e.g. HidHide-style) where you need to know the outcome is trustworthy before proceeding, without hand-rolling a wait loop
+
+**`--uninstall-filter-driver`** — Removes a class filter entry and its driver service as one atomic, ordered sequence: the filter registry entry is removed and its removal is *confirmed* before the service is touched at all, so it is impossible to end up with a dangling `UpperFilters`/`LowerFilters` entry pointing at a since-deleted service (which can prevent the whole device class from starting). Service deletion is retried across a short window to absorb the brief race where the kernel hasn't yet released the driver image.
+
+- **Required:** `--position` (`upper` or `lower`), `--service-name`, `--class-guid`
+- **Optional:** `--restart-timeout` — milliseconds to wait per device restart attempt, default `10000`; `--stop-timeout` — milliseconds to wait for the service to stop, default `10000`; `--retry-timeout` — milliseconds to keep retrying service deletion while the driver image is still in use, default `5000`; `--inf-path` — path to the *original* INF file; when given, also purges the matching published package from the driver store (surgical `oemNN.inf` removal, no device nodes touched) after the service has been deleted, default: not purged
+- **Pitfalls:** If the filter registry entry cannot be confirmed removed, the command aborts *before* deleting the service, to avoid the bricking scenario described above — check the error and fix the underlying issue rather than forcing service deletion separately. The driver-store purge is opt-in only via `--inf-path`; it is never performed implicitly
+- **When to use:** Removing a class filter driver cleanly, especially in unattended/scripted uninstalls where the two-command sequence's race conditions are unacceptable
 
 ### Driver service management
 
@@ -255,6 +275,21 @@ nefconw --remove-class-filter --position upper --service-name HidHide --class-gu
 
 # Attempt to restart present devices of the class (best-effort; a reboot may still be required)
 nefconw --add-class-filter --position upper --service-name HidHide --class-guid 745a17a0-74d3-11d0-b6fe-00a0c90f57da --attempt-restart-affected
+```
+
+### Atomic filter driver install/remove
+
+```text
+# Install: same result as --inf-default-install --attempt-restart-affected, plus a trustworthy
+# post-install service state instead of the caller having to guess/probe immediately afterwards.
+nefconw --install-filter-driver --inf-path "MyFilter.inf"
+
+# Uninstall: filter entry is removed and confirmed gone before the service is deleted; deletion
+# is retried for up to 5s (default) if the driver image isn't freed yet.
+nefconw --uninstall-filter-driver --position upper --service-name KeyboardCaster --class-guid 4D36E96B-E325-11CE-BFC1-08002BE10318
+
+# Same, plus purge the published driver-store package once the service is gone.
+nefconw --uninstall-filter-driver --position upper --service-name KeyboardCaster --class-guid 4D36E96B-E325-11CE-BFC1-08002BE10318 --inf-path "MyFilter.inf"
 ```
 
 ### Driver service management

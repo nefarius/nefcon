@@ -70,6 +70,18 @@ namespace
     void RestartAffectedDevicesForInf(const argh::parser& cmdl, const std::string& infPath, bool& rebootRequired);
 
     //
+    // --install-filter-driver's race-safety fix: unconditionally restarts devices affected by the
+    // INF's class filter declarations (same discovery as RestartAffectedDevicesForInf, but never
+    // gated behind --attempt-restart-affected since this command is meant to be atomic), then
+    // waits for each declared filter service to settle into a state a caller can trust instead of
+    // probing it immediately. A service is only expected to be SERVICE_RUNNING if a device of its
+    // class is actually present; otherwise a legitimately demand-started, still-stopped service is
+    // logged, not treated as an error. Folds any settle failure into rebootRequired rather than
+    // failing the overall install, since the driver package itself installed successfully.
+    //
+    void SettleFilterDriverInstall(const argh::parser& cmdl, const std::string& infPath, bool& rebootRequired);
+
+    //
     // A single device detached from the system in preparation for a driver upgrade/removal,
     // recorded so a later --reenumerate-affected invocation (possibly after the process/session
     // that detached it has exited) can bring it back.
@@ -136,7 +148,9 @@ int main(int argc, char* argv[])
         "--service-guid",
         "--restart-timeout",
         "--stop-timeout",
-        "--state-file"
+        "--state-file",
+        "--health-timeout",
+        "--retry-timeout"
     });
 
     auto cliArgs = nefarius::winapi::cli::GetCommandLineArgs();
@@ -521,6 +535,207 @@ int main(int argc, char* argv[])
 
         logger->error("Failed to modify filter value, error: %v", ret.error().getErrorMessageA());
         return ret.error().getErrorCode();
+    }
+
+    if (cmdl[{"--install-filter-driver"}])
+    {
+        logger->verbose(1, "Invoked --install-filter-driver");
+
+        int errorCode;
+        if (!IsAdmin(errorCode)) return errorCode;
+
+        infPath = cmdl({"--inf-path"}).str();
+
+        if (infPath.empty())
+        {
+            logger->error("INF path missing");
+            return EXIT_FAILURE;
+        }
+
+        if (_access(infPath.c_str(), 0) != 0)
+        {
+            logger->error("The given INF file doesn't exist, is the path correct?");
+            return EXIT_FAILURE;
+        }
+
+        const DWORD attribs = GetFileAttributesA(infPath.c_str());
+
+        if (attribs & FILE_ATTRIBUTE_DIRECTORY)
+        {
+            logger->error("The given INF path is a directory, not a file");
+            return EXIT_FAILURE;
+        }
+
+        bool rebootRequired = false;
+
+        if (const auto result = nefarius::devcon::InfDefaultInstall(nefarius::utilities::ConvertAnsiToWide(infPath),
+                                                                    &rebootRequired); !result)
+        {
+            logger->error("Failed to install INF file, error: %v", result.error().getErrorMessageA());
+            return result.error().getErrorCode();
+        }
+
+        logger->info("INF file installed successfully");
+
+        //
+        // Unlike --inf-default-install, restart-and-settle always runs; this command is meant to
+        // be a single atomic "install and make sure it's actually usable" step.
+        // 
+        SettleFilterDriverInstall(cmdl, infPath, rebootRequired);
+
+        if (rebootRequired)
+        {
+            logger->warn(
+                "Filter driver installed, but a reboot (or reconnecting affected devices) may be required for it to become fully operational");
+        }
+
+        return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
+    }
+
+    if (cmdl[{"--uninstall-filter-driver"}])
+    {
+        logger->verbose(1, "Invoked --uninstall-filter-driver");
+
+        int errorCode;
+        if (!IsAdmin(errorCode)) return errorCode;
+
+        if (!(cmdl({"--position"}) >> position))
+        {
+            logger->error("Position missing");
+            return EXIT_FAILURE;
+        }
+
+        if (!(cmdl({"--service-name"}) >> serviceName))
+        {
+            logger->error("Filter Service Name missing");
+            return EXIT_FAILURE;
+        }
+
+        if (!(cmdl({"--class-guid"}) >> classGuid))
+        {
+            logger->error("Device Class GUID missing");
+            return EXIT_FAILURE;
+        }
+
+        const auto guid = nefarius::winapi::GUIDFromString(classGuid);
+
+        if (!guid)
+        {
+            logger->error(
+                "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
+            return EXIT_FAILURE;
+        }
+
+        nefarius::devcon::DeviceClassFilterPosition pos;
+
+        if (position == "upper")
+        {
+            logger->verbose(1, "Modifying upper filters");
+            pos = nefarius::devcon::DeviceClassFilterPosition::Upper;
+        }
+        else if (position == "lower")
+        {
+            logger->verbose(1, "Modifying lower filters");
+            pos = nefarius::devcon::DeviceClassFilterPosition::Lower;
+        }
+        else
+        {
+            logger->error("Unsupported position received. Valid values include: upper, lower");
+            return EXIT_FAILURE;
+        }
+
+        //
+        // Step 1: remove the filter registry entry FIRST and confirm it is actually gone before
+        // touching the service at all. This ordering is what makes it impossible to end up with
+        // a dangling UpperFilters/LowerFilters entry pointing at a since-deleted service, which
+        // can prevent the whole device class from starting (the "bricking" scenario).
+        // 
+        if (const auto removeResult = RemoveDeviceClassFilter(&guid.value(),
+                                                               nefarius::utilities::ConvertAnsiToWide(serviceName),
+                                                               pos); !removeResult)
+        {
+            logger->error("Failed to remove filter registry entry, error: %v",
+                          removeResult.error().getErrorMessageA());
+            return removeResult.error().getErrorCode();
+        }
+
+        const auto stillPresent = HasDeviceClassFilter(&guid.value(),
+                                                        nefarius::utilities::ConvertAnsiToWide(serviceName), pos);
+
+        if (!stillPresent)
+        {
+            logger->error(
+                "Failed to verify filter registry entry removal, error: %v; aborting before touching the driver service",
+                stillPresent.error().getErrorMessageA());
+            return stillPresent.error().getErrorCode();
+        }
+
+        if (stillPresent.value())
+        {
+            logger->error(
+                "Filter registry entry for service \"%v\" is still present after removal; aborting before touching the driver service to avoid leaving a dangling filter entry",
+                serviceName);
+            return EXIT_FAILURE;
+        }
+
+        logger->info("Filter registry entry removed successfully");
+
+        //
+        // Step 2: restart affected devices so the filter driver actually unloads and frees its
+        // image, then delete the service with retry to absorb the brief race where the kernel
+        // hasn't yet released the image by the time deletion is attempted.
+        // 
+        bool rebootRequired = false;
+
+        const int restartTimeoutMs = ParseTimeoutMs(cmdl, "--restart-timeout", 10000);
+        const auto restartResult = RestartAffectedDevices(
+            {guid.value()}, std::chrono::milliseconds(restartTimeoutMs));
+        rebootRequired = rebootRequired || restartResult.AnyRebootRequired;
+
+        const int stopTimeoutMs = ParseTimeoutMs(cmdl, "--stop-timeout", 10000);
+        const int retryTimeoutMs = ParseTimeoutMs(cmdl, "--retry-timeout", 5000);
+
+        if (const auto deleteResult = nefarius::winapi::services::DeleteDriverServiceWithRetry(
+            serviceName, std::chrono::milliseconds(stopTimeoutMs), std::chrono::milliseconds(retryTimeoutMs),
+            &rebootRequired); !deleteResult)
+        {
+            logger->error("Failed to remove driver service, error: %v", deleteResult.error().getErrorMessageA());
+            return deleteResult.error().getErrorCode();
+        }
+
+        logger->info("Driver service removed successfully");
+
+        //
+        // Step 3 (optional): purge the driver-store package. Opt-in only, and run last so the
+        // package is deleted only after the filter entry is confirmed gone and the service has
+        // been deleted (i.e. the driver image is already freed).
+        // 
+        if (const auto storeInfPath = cmdl({"--inf-path"}).str(); !storeInfPath.empty())
+        {
+            if (_access(storeInfPath.c_str(), 0) != 0)
+            {
+                logger->warn("The given --inf-path \"%v\" doesn't exist; skipping driver store purge",
+                             storeInfPath);
+            }
+            else if (const auto purgeResult = nefarius::devcon::RemoveDriverStorePackage(
+                nefarius::utilities::ConvertAnsiToWide(storeInfPath), &rebootRequired); !purgeResult)
+            {
+                logger->warn("Failed to purge driver store package, error: %v; a reboot may be required",
+                             purgeResult.error().getErrorMessageA());
+                rebootRequired = true;
+            }
+            else
+            {
+                logger->info("Driver store package purged successfully");
+            }
+        }
+
+        if (rebootRequired)
+        {
+            logger->warn("Filter driver removed, but a reboot may be required to fully complete this operation");
+        }
+
+        return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
     }
 
 #pragma endregion
@@ -1260,6 +1475,21 @@ int main(int argc, char* argv[])
     std::cout << "      --class-guid             Device Class GUID to modify (required)" << '\n';
     std::cout << "      --attempt-restart-affected Best-effort attempt to restart present devices of this class; a reboot may still be required (optional)" << '\n';
     std::cout << "      --restart-timeout        Milliseconds to wait per device restart attempt, default 10000 (optional)" << '\n';
+    std::cout << "    --install-filter-driver    Atomically installs an INF-based filter driver and confirms it is settled" << '\n';
+    std::cout << "      --inf-path               Path to the INF file to install, absolute or relative to CWD (required)" << '\n';
+    std::cout << "      --class-guid             Additional Device Class GUID to restart/settle, on top of what the INF declares (optional)" << '\n';
+    std::cout << "      --restart-timeout        Milliseconds to wait per device restart attempt, default 10000 (optional)" << '\n';
+    std::cout << "      --health-timeout         Milliseconds to wait for each declared filter service to reach SERVICE_RUNNING when a device of its class is present, default 10000 (optional)" << '\n';
+    std::cout << "                                 A filter service with no present device is expected to remain stopped (demand-start); that is not reported as an error" << '\n';
+    std::cout << "    --uninstall-filter-driver  Atomically removes a class filter entry and its driver service without ever leaving a dangling filter entry" << '\n';
+    std::cout << "      --position               Which filter to modify (required)" << '\n';
+    std::cout << "                                 Valid values include: upper|lower" << '\n';
+    std::cout << "      --service-name           The driver service name to remove (required)" << '\n';
+    std::cout << "      --class-guid             Device Class GUID to modify (required)" << '\n';
+    std::cout << "      --restart-timeout        Milliseconds to wait per device restart attempt, default 10000 (optional)" << '\n';
+    std::cout << "      --stop-timeout           Milliseconds to wait for the service to stop, default 10000 (optional)" << '\n';
+    std::cout << "      --retry-timeout          Milliseconds to keep retrying service deletion while the driver image is still in use, default 5000 (optional)" << '\n';
+    std::cout << "      --inf-path               Path to the original INF file; if given, also purges the matching published package from the driver store, default: not purged (optional)" << '\n';
     std::cout << "    --create-driver-service    Creates a new service with a kernel driver as binary" << '\n';
     std::cout << "      --bin-path               Path to the .sys file, absolute or relative to CWD (required)" << '\n';
     std::cout << "      --service-name           The driver service name to create (required)" << '\n';
@@ -1520,6 +1750,162 @@ namespace
         const auto restartResult = RestartAffectedDevices(classGuids, std::chrono::milliseconds(restartTimeoutMs));
 
         rebootRequired = rebootRequired || restartResult.AnyRebootRequired;
+    }
+
+    void SettleFilterDriverInstall(const argh::parser& cmdl, const std::string& infPath, bool& rebootRequired)
+    {
+        el::Logger* logger = el::Loggers::getLogger("default");
+
+        std::vector<GUID> classGuids;
+
+        const auto addUniqueGuid = [&classGuids](const GUID& candidate)
+        {
+            const bool alreadyPresent = std::any_of(classGuids.begin(), classGuids.end(),
+                                                     [&candidate](const GUID& existing)
+                                                     {
+                                                         return IsEqualGUID(existing, candidate);
+                                                     });
+
+            if (!alreadyPresent)
+            {
+                classGuids.push_back(candidate);
+            }
+        };
+
+        struct FilterServiceEntry
+        {
+            std::wstring ServiceName;
+            std::vector<GUID> ClassGuids;
+        };
+
+        std::vector<FilterServiceEntry> serviceEntries;
+
+        const auto addServiceClassGuid = [&serviceEntries](const std::wstring& serviceNameWide, const GUID& classGuid)
+        {
+            const auto it = std::find_if(serviceEntries.begin(), serviceEntries.end(),
+                                         [&serviceNameWide](const FilterServiceEntry& entry)
+                                         {
+                                             return _wcsicmp(entry.ServiceName.c_str(), serviceNameWide.c_str()) == 0;
+                                         });
+
+            if (it == serviceEntries.end())
+            {
+                serviceEntries.push_back({serviceNameWide, {classGuid}});
+                return;
+            }
+
+            const bool alreadyPresent = std::any_of(it->ClassGuids.begin(), it->ClassGuids.end(),
+                                                     [&classGuid](const GUID& existing)
+                                                     {
+                                                         return IsEqualGUID(existing, classGuid);
+                                                     });
+
+            if (!alreadyPresent)
+            {
+                it->ClassGuids.push_back(classGuid);
+            }
+        };
+
+        if (const auto targets = nefarius::devcon::GetInfClassFilterTargets(
+            nefarius::utilities::ConvertAnsiToWide(infPath)); targets)
+        {
+            for (const auto& target : targets.value())
+            {
+                addUniqueGuid(target.ClassGuid);
+                addServiceClassGuid(target.ServiceName, target.ClassGuid);
+            }
+        }
+        else
+        {
+            logger->warn("Failed to determine affected device class(es) from INF, error: %v",
+                         targets.error().getErrorMessageA());
+        }
+
+        if (const auto explicitClassGuid = cmdl({"--class-guid"}).str(); !explicitClassGuid.empty())
+        {
+            if (const auto guid = nefarius::winapi::GUIDFromString(explicitClassGuid); guid)
+            {
+                addUniqueGuid(guid.value());
+            }
+            else
+            {
+                logger->error("Invalid --class-guid value \"%v\", error: %v", explicitClassGuid,
+                             guid.error().getErrorMessageA());
+            }
+        }
+
+        const int restartTimeoutMs = ParseTimeoutMs(cmdl, "--restart-timeout", 10000);
+
+        const auto restartResult = RestartAffectedDevices(classGuids, std::chrono::milliseconds(restartTimeoutMs));
+
+        rebootRequired = rebootRequired || restartResult.AnyRebootRequired;
+
+        if (serviceEntries.empty())
+        {
+            logger->verbose(1, "INF declares no class filter service; skipping service health check");
+            return;
+        }
+
+        const int healthTimeoutMs = ParseTimeoutMs(cmdl, "--health-timeout", 10000);
+
+        for (const auto& entry : serviceEntries)
+        {
+            const std::string serviceNameA = nefarius::utilities::ConvertWideToANSI(entry.ServiceName);
+
+            const bool anyDevicePresent = std::any_of(entry.ClassGuids.begin(), entry.ClassGuids.end(),
+                                                      [](const GUID& classGuid)
+                                                      {
+                                                          const auto instances =
+                                                              nefarius::devcon::ListDeviceInstancesByClass(&classGuid);
+                                                          return instances && !instances.value().empty();
+                                                      });
+
+            if (anyDevicePresent)
+            {
+                const auto status = nefarius::winapi::services::WaitForServiceState(
+                    entry.ServiceName, SERVICE_RUNNING, std::chrono::milliseconds(healthTimeoutMs));
+
+                if (!status)
+                {
+                    logger->warn("Filter service \"%v\" could not be queried after install, error: %v",
+                                 serviceNameA, status.error().getErrorMessageA());
+                    rebootRequired = true;
+                    continue;
+                }
+
+                if (status.value().dwCurrentState == SERVICE_RUNNING)
+                {
+                    logger->info("Filter service \"%v\" is running", serviceNameA);
+                }
+                else
+                {
+                    logger->warn(
+                        "Filter service \"%v\" did not reach the running state within %v ms; reconnecting affected devices or a reboot may be required",
+                        serviceNameA, healthTimeoutMs);
+                    rebootRequired = true;
+                }
+
+                continue;
+            }
+
+            //
+            // No device of this filter's class is currently present, so the service is
+            // legitimately registered but demand-started (not yet running); that is expected,
+            // not an error, and is exactly the false-positive a naive immediate health probe
+            // would otherwise report.
+            // 
+            if (const auto status = nefarius::winapi::services::GetServiceStatus(entry.ServiceName); status)
+            {
+                logger->info(
+                    "Filter service \"%v\" is registered (state: %v); no present device to start it yet",
+                    serviceNameA, status.value().dwCurrentState);
+            }
+            else
+            {
+                logger->warn("Filter service \"%v\" could not be found after install, error: %v",
+                             serviceNameA, status.error().getErrorMessageA());
+            }
+        }
     }
 
     //
