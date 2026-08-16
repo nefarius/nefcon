@@ -1777,6 +1777,17 @@ namespace
 
         const auto discovered = DiscoverClassFilterTargets(cmdl, infPath);
 
+        if (discovered.DiscoveryFailed)
+        {
+            //
+            // We were asked to restart devices affected by the INF's class filter declarations,
+            // but couldn't determine what they are; surface reboot-required rather than silently
+            // skipping the restart (or restarting only an explicit --class-guid, if any) without
+            // any signal to the caller that the requested restart may not have actually happened.
+            // 
+            rebootRequired = true;
+        }
+
         const int restartTimeoutMs = ParseTimeoutMs(cmdl, "--restart-timeout", 10000);
 
         const auto restartResult = RestartAffectedDevices(discovered.ClassGuids,
@@ -1859,33 +1870,67 @@ namespace
         //
         // Compute device presence once per unique class GUID (after the restart above) instead of
         // re-enumerating devices for every service entry that happens to target the same class.
+        // A failed enumeration is tracked separately from "queried successfully, found nothing" —
+        // conflating the two would make a transient enumeration error look like "no device of
+        // this class", which would incorrectly take the no-error demand-started branch below.
         // 
-        std::vector<std::pair<GUID, bool>> classDevicePresence;
+        enum class ClassDevicePresence
+        {
+            Absent,
+            Present,
+            QueryFailed
+        };
+
+        std::vector<std::pair<GUID, ClassDevicePresence>> classDevicePresence;
         classDevicePresence.reserve(discovered.ClassGuids.size());
 
         for (const auto& classGuid : discovered.ClassGuids)
         {
             const auto instances = nefarius::devcon::ListDeviceInstancesByClass(&classGuid);
-            classDevicePresence.emplace_back(classGuid, instances && !instances.value().empty());
+
+            if (!instances)
+            {
+                classDevicePresence.emplace_back(classGuid, ClassDevicePresence::QueryFailed);
+                continue;
+            }
+
+            classDevicePresence.emplace_back(
+                classGuid, instances.value().empty() ? ClassDevicePresence::Absent : ClassDevicePresence::Present);
         }
 
-        const auto isDevicePresentForClass = [&classDevicePresence](const GUID& classGuid)
+        const auto getClassPresence = [&classDevicePresence](const GUID& classGuid)
         {
             const auto it = std::find_if(classDevicePresence.begin(), classDevicePresence.end(),
-                                         [&classGuid](const std::pair<GUID, bool>& entry)
+                                         [&classGuid](const std::pair<GUID, ClassDevicePresence>& entry)
                                          {
                                              return IsEqualGUID(entry.first, classGuid);
                                          });
 
-            return it != classDevicePresence.end() && it->second;
+            return it != classDevicePresence.end() ? it->second : ClassDevicePresence::QueryFailed;
         };
 
         for (const auto& entry : serviceEntries)
         {
             const std::string serviceNameA = nefarius::utilities::ConvertWideToANSI(entry.ServiceName);
 
-            const bool anyDevicePresent = std::any_of(entry.ClassGuids.begin(), entry.ClassGuids.end(),
-                                                      isDevicePresentForClass);
+            bool anyDevicePresent = false;
+            bool anyQueryFailed = false;
+
+            for (const auto& classGuid : entry.ClassGuids)
+            {
+                switch (getClassPresence(classGuid))
+                {
+                case ClassDevicePresence::Present:
+                    anyDevicePresent = true;
+                    break;
+                case ClassDevicePresence::QueryFailed:
+                    anyQueryFailed = true;
+                    break;
+                case ClassDevicePresence::Absent:
+                default:
+                    break;
+                }
+            }
 
             if (anyDevicePresent)
             {
@@ -1912,6 +1957,20 @@ namespace
                     rebootRequired = true;
                 }
 
+                continue;
+            }
+
+            if (anyQueryFailed)
+            {
+                //
+                // Couldn't determine whether a device of this service's class is present, so we
+                // can't tell whether SERVICE_RUNNING or demand-started-and-stopped is the correct
+                // expectation. Don't guess either way; surface reboot-required instead.
+                // 
+                logger->warn(
+                    "Failed to determine whether a device of filter service \"%v\"'s class is present; its post-install state could not be verified",
+                    serviceNameA);
+                rebootRequired = true;
                 continue;
             }
 
