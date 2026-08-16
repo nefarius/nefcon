@@ -560,6 +560,12 @@ int main(int argc, char* argv[])
 
         const DWORD attribs = GetFileAttributesA(infPath.c_str());
 
+        if (attribs == INVALID_FILE_ATTRIBUTES)
+        {
+            logger->error("Failed to query attributes of the given INF path, error: %v", GetLastError());
+            return EXIT_FAILURE;
+        }
+
         if (attribs & FILE_ATTRIBUTE_DIRECTORY)
         {
             logger->error("The given INF path is a directory, not a file");
@@ -1693,20 +1699,31 @@ namespace
         return defaultMs;
     }
 
-    void RestartAffectedDevicesForInf(const argh::parser& cmdl, const std::string& infPath, bool& rebootRequired)
+    struct DiscoveredClassFilterTargets
     {
-        if (!cmdl[{"--attempt-restart-affected"}])
-        {
-            return;
-        }
+        ///< Deduplicated union of every class GUID the INF declares plus an explicit --class-guid, if given
+        std::vector<GUID> ClassGuids;
+        ///< Raw (service name, class GUID) pairs the INF declares; empty if discovery failed
+        std::vector<nefarius::devcon::InfClassFilterTarget> Targets;
+        ///< True if the INF's class filter targets could not be determined (already logged as a warning)
+        bool DiscoveryFailed = false;
+    };
 
+    //
+    // Shared by RestartAffectedDevicesForInf and SettleFilterDriverInstall: figures out which
+    // device class GUID(s) an INF's class filter registrations target, merged with an optional
+    // explicit --class-guid. Callers decide for themselves how to react to DiscoveryFailed and
+    // whether they need the raw Targets (e.g. to group by service name).
+    // 
+    DiscoveredClassFilterTargets DiscoverClassFilterTargets(const argh::parser& cmdl, const std::string& infPath)
+    {
         el::Logger* logger = el::Loggers::getLogger("default");
 
-        std::vector<GUID> classGuids;
+        DiscoveredClassFilterTargets result;
 
-        const auto addUnique = [&classGuids](const GUID& candidate)
+        const auto addUniqueGuid = [&result](const GUID& candidate)
         {
-            const bool alreadyPresent = std::any_of(classGuids.begin(), classGuids.end(),
+            const bool alreadyPresent = std::any_of(result.ClassGuids.begin(), result.ClassGuids.end(),
                                                      [&candidate](const GUID& existing)
                                                      {
                                                          return IsEqualGUID(existing, candidate);
@@ -1714,29 +1731,32 @@ namespace
 
             if (!alreadyPresent)
             {
-                classGuids.push_back(candidate);
+                result.ClassGuids.push_back(candidate);
             }
         };
 
         if (const auto targets = nefarius::devcon::GetInfClassFilterTargets(
             nefarius::utilities::ConvertAnsiToWide(infPath)); targets)
         {
-            for (const auto& target : targets.value())
+            result.Targets = targets.value();
+
+            for (const auto& target : result.Targets)
             {
-                addUnique(target.ClassGuid);
+                addUniqueGuid(target.ClassGuid);
             }
         }
         else
         {
             logger->warn("Failed to determine affected device class(es) from INF, error: %v",
                          targets.error().getErrorMessageA());
+            result.DiscoveryFailed = true;
         }
 
         if (const auto explicitClassGuid = cmdl({"--class-guid"}).str(); !explicitClassGuid.empty())
         {
             if (const auto guid = nefarius::winapi::GUIDFromString(explicitClassGuid); guid)
             {
-                addUnique(guid.value());
+                addUniqueGuid(guid.value());
             }
             else
             {
@@ -1745,9 +1765,22 @@ namespace
             }
         }
 
+        return result;
+    }
+
+    void RestartAffectedDevicesForInf(const argh::parser& cmdl, const std::string& infPath, bool& rebootRequired)
+    {
+        if (!cmdl[{"--attempt-restart-affected"}])
+        {
+            return;
+        }
+
+        const auto discovered = DiscoverClassFilterTargets(cmdl, infPath);
+
         const int restartTimeoutMs = ParseTimeoutMs(cmdl, "--restart-timeout", 10000);
 
-        const auto restartResult = RestartAffectedDevices(classGuids, std::chrono::milliseconds(restartTimeoutMs));
+        const auto restartResult = RestartAffectedDevices(discovered.ClassGuids,
+                                                            std::chrono::milliseconds(restartTimeoutMs));
 
         rebootRequired = rebootRequired || restartResult.AnyRebootRequired;
     }
@@ -1756,21 +1789,18 @@ namespace
     {
         el::Logger* logger = el::Loggers::getLogger("default");
 
-        std::vector<GUID> classGuids;
+        const auto discovered = DiscoverClassFilterTargets(cmdl, infPath);
 
-        const auto addUniqueGuid = [&classGuids](const GUID& candidate)
+        if (discovered.DiscoveryFailed)
         {
-            const bool alreadyPresent = std::any_of(classGuids.begin(), classGuids.end(),
-                                                     [&candidate](const GUID& existing)
-                                                     {
-                                                         return IsEqualGUID(existing, candidate);
-                                                     });
-
-            if (!alreadyPresent)
-            {
-                classGuids.push_back(candidate);
-            }
-        };
+            //
+            // The whole point of this function is to hand the caller a trustworthy verdict about
+            // the driver's post-install state. If we can't even determine which classes/services
+            // to check, we cannot make that claim, so surface reboot-required instead of silently
+            // falling through to EXIT_SUCCESS.
+            // 
+            rebootRequired = true;
+        }
 
         struct FilterServiceEntry
         {
@@ -1806,37 +1836,15 @@ namespace
             }
         };
 
-        if (const auto targets = nefarius::devcon::GetInfClassFilterTargets(
-            nefarius::utilities::ConvertAnsiToWide(infPath)); targets)
+        for (const auto& target : discovered.Targets)
         {
-            for (const auto& target : targets.value())
-            {
-                addUniqueGuid(target.ClassGuid);
-                addServiceClassGuid(target.ServiceName, target.ClassGuid);
-            }
-        }
-        else
-        {
-            logger->warn("Failed to determine affected device class(es) from INF, error: %v",
-                         targets.error().getErrorMessageA());
-        }
-
-        if (const auto explicitClassGuid = cmdl({"--class-guid"}).str(); !explicitClassGuid.empty())
-        {
-            if (const auto guid = nefarius::winapi::GUIDFromString(explicitClassGuid); guid)
-            {
-                addUniqueGuid(guid.value());
-            }
-            else
-            {
-                logger->error("Invalid --class-guid value \"%v\", error: %v", explicitClassGuid,
-                             guid.error().getErrorMessageA());
-            }
+            addServiceClassGuid(target.ServiceName, target.ClassGuid);
         }
 
         const int restartTimeoutMs = ParseTimeoutMs(cmdl, "--restart-timeout", 10000);
 
-        const auto restartResult = RestartAffectedDevices(classGuids, std::chrono::milliseconds(restartTimeoutMs));
+        const auto restartResult = RestartAffectedDevices(discovered.ClassGuids,
+                                                            std::chrono::milliseconds(restartTimeoutMs));
 
         rebootRequired = rebootRequired || restartResult.AnyRebootRequired;
 
@@ -1848,17 +1856,36 @@ namespace
 
         const int healthTimeoutMs = ParseTimeoutMs(cmdl, "--health-timeout", 10000);
 
+        //
+        // Compute device presence once per unique class GUID (after the restart above) instead of
+        // re-enumerating devices for every service entry that happens to target the same class.
+        // 
+        std::vector<std::pair<GUID, bool>> classDevicePresence;
+        classDevicePresence.reserve(discovered.ClassGuids.size());
+
+        for (const auto& classGuid : discovered.ClassGuids)
+        {
+            const auto instances = nefarius::devcon::ListDeviceInstancesByClass(&classGuid);
+            classDevicePresence.emplace_back(classGuid, instances && !instances.value().empty());
+        }
+
+        const auto isDevicePresentForClass = [&classDevicePresence](const GUID& classGuid)
+        {
+            const auto it = std::find_if(classDevicePresence.begin(), classDevicePresence.end(),
+                                         [&classGuid](const std::pair<GUID, bool>& entry)
+                                         {
+                                             return IsEqualGUID(entry.first, classGuid);
+                                         });
+
+            return it != classDevicePresence.end() && it->second;
+        };
+
         for (const auto& entry : serviceEntries)
         {
             const std::string serviceNameA = nefarius::utilities::ConvertWideToANSI(entry.ServiceName);
 
             const bool anyDevicePresent = std::any_of(entry.ClassGuids.begin(), entry.ClassGuids.end(),
-                                                      [](const GUID& classGuid)
-                                                      {
-                                                          const auto instances =
-                                                              nefarius::devcon::ListDeviceInstancesByClass(&classGuid);
-                                                          return instances && !instances.value().empty();
-                                                      });
+                                                      isDevicePresentForClass);
 
             if (anyDevicePresent)
             {
