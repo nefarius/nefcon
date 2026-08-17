@@ -1596,6 +1596,57 @@ namespace
         }
     }
 
+    // Only the CM_PROB_* codes that are plausible for a device that just went through a restart
+    // ladder are named; anything else is reported as its raw numeric value so nothing is hidden.
+    std::string ProblemCodeToString(ULONG problemCode)
+    {
+        switch (problemCode)
+        {
+        case CM_PROB_NEED_RESTART:
+            return "CM_PROB_NEED_RESTART";
+        case CM_PROB_WILL_BE_REMOVED:
+            return "CM_PROB_WILL_BE_REMOVED";
+        case CM_PROB_MOVED:
+            return "CM_PROB_MOVED";
+        case CM_PROB_TOO_EARLY:
+            return "CM_PROB_TOO_EARLY";
+        case CM_PROB_NO_VALID_LOG_CONF:
+            return "CM_PROB_NO_VALID_LOG_CONF";
+        case CM_PROB_FAILED_INSTALL:
+            return "CM_PROB_FAILED_INSTALL";
+        case CM_PROB_HARDWARE_DISABLED:
+            return "CM_PROB_HARDWARE_DISABLED";
+        case CM_PROB_NOT_CONFIGURED:
+            return "CM_PROB_NOT_CONFIGURED";
+        case CM_PROB_FAILED_ADD:
+            return "CM_PROB_FAILED_ADD";
+        case CM_PROB_DISABLED_SERVICE:
+            return "CM_PROB_DISABLED_SERVICE";
+        case CM_PROB_DEVICE_NOT_THERE:
+            return "CM_PROB_DEVICE_NOT_THERE";
+        case CM_PROB_REGISTRY:
+            return "CM_PROB_REGISTRY";
+        case CM_PROB_PHANTOM:
+            return "CM_PROB_PHANTOM";
+        default:
+            return std::to_string(problemCode);
+        }
+    }
+
+    // Appended to failure/warning log lines for a still-present device so verbose logs can
+    // distinguish one that is genuinely stuck (has a problem code) from one that simply took
+    // slightly longer than a single strategy's verify window - the two used to look identical.
+    std::string DescribeFinalDevNodeState(const nefarius::devcon::DeviceRestartResult& result)
+    {
+        std::string detail = " (final devnode state: started=";
+        detail += result.FinalStarted ? "true" : "false";
+        detail += result.FinalHasProblem
+                       ? (", problem=" + ProblemCodeToString(result.FinalProblemCode))
+                       : std::string(", no problem code");
+        detail += ")";
+        return detail;
+    }
+
     RestartAffectedDevicesResult RestartAffectedDevices(const std::vector<GUID>& classGuids,
                                                         std::chrono::milliseconds timeout)
     {
@@ -1640,27 +1691,60 @@ namespace
                                                      : result.FriendlyName;
                 const std::string displayNameA = nefarius::utilities::ConvertWideToANSI(displayName);
 
+                // Only meaningful for a still-present device; the !DevicePresent branch below
+                // never consults it.
+                const std::string finalStateDetail = DescribeFinalDevNodeState(result);
+
                 if (result.Succeeded)
                 {
                     logger->info("Restarted device \"%v\" via %v", displayNameA, ToString(result.Strategy));
                 }
+                else if (!result.DevicePresent)
+                {
+                    // The device disappeared during the restart ladder (unplugged, or a phantom
+                    // node) - there is nothing left to restart, this is informational rather than
+                    // a failure.
+                    logger->info("Device \"%v\" is no longer present; nothing to restart", displayNameA);
+                }
                 else if (result.TimedOut)
                 {
-                    logger->warn("Timed out attempting to restart device \"%v\", a reboot may be required",
-                                 displayNameA);
+                    logger->warn("Timed out attempting to restart device \"%v\" (last attempted: %v)%v",
+                                 displayNameA, ToString(result.LastAttempted), finalStateDetail);
                 }
                 else if (!result.VetoName.empty())
                 {
                     logger->warn(
-                        "Could not restart device \"%v\", blocked by \"%v\", a reboot may be required",
-                        displayNameA, nefarius::utilities::ConvertWideToANSI(result.VetoName));
+                        "Could not restart device \"%v\", blocked by \"%v\" (%v)%v",
+                        displayNameA, nefarius::utilities::ConvertWideToANSI(result.VetoName),
+                        nefarius::utilities::Win32Error(result.LastError).getErrorMessageA(), finalStateDetail);
                 }
                 else
                 {
-                    logger->warn("Could not restart device \"%v\", a reboot may be required", displayNameA);
+                    logger->warn("Could not restart device \"%v\", last attempted: %v, error: %v%v",
+                                 displayNameA, ToString(result.LastAttempted),
+                                 nefarius::utilities::Win32Error(result.LastError).getErrorMessageA(),
+                                 finalStateDetail);
                 }
 
-                summary.AnyRebootRequired = summary.AnyRebootRequired || !result.Succeeded || result.RebootRequired;
+                // Escalate to "a reboot may be required" only on real evidence, never on the bare
+                // fact that this attempt didn't verify as Succeeded:
+                //  - result.RebootRequired: Windows itself flagged DI_NEEDRESTART/DI_NEEDREBOOT
+                //    for this device. This is reported independently of Succeeded (a device can
+                //    come back online fine and still have this flag set by a strategy), so it is
+                //    honored even when Succeeded is true.
+                //  - the final authoritative re-check found the device present with a problem code
+                //    that itself indicates a pending restart/reboot (e.g. CM_PROB_NEED_RESTART).
+                // A device that is merely !Succeeded with no such evidence (including one that is
+                // no longer present at all, or "present, not started, no problem code") is warned
+                // about above with full detail but does not by itself demand a reboot.
+                const bool problemIndicatesRestartNeeded = result.DevicePresent && result.FinalHasProblem &&
+                    (result.FinalProblemCode == CM_PROB_NEED_RESTART ||
+                        result.FinalProblemCode == CM_PROB_WILL_BE_REMOVED);
+
+                if (result.RebootRequired || problemIndicatesRestartNeeded)
+                {
+                    summary.AnyRebootRequired = true;
+                }
             }
         }
 
