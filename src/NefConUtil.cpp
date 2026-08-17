@@ -1638,6 +1638,12 @@ namespace
     // slightly longer than a single strategy's verify window - the two used to look identical.
     std::string DescribeFinalDevNodeState(const nefarius::devcon::DeviceRestartResult& result)
     {
+        if (!result.FinalStatusValid)
+        {
+            return " (final devnode status could not be queried, error 0x" +
+                std::to_string(result.FinalStatusError) + ")";
+        }
+
         std::string detail = " (final devnode state: started=";
         detail += result.FinalStarted ? "true" : "false";
         detail += result.FinalHasProblem
