@@ -82,6 +82,17 @@ namespace
     void SettleFilterDriverInstall(const argh::parser& cmdl, const std::string& infPath, bool& rebootRequired);
 
     //
+    // Safety net for --install-filter-driver: after a failed InfDefaultInstall, waits (bounded by
+    // timeout) for any driver service the INF would (re)create to fully disappear from the SCM
+    // database, working around the brief window where a just-uninstalled filter service is still
+    // "marked for deletion" and blocks CreateService with ERROR_SERVICE_MARKED_FOR_DELETE. Returns
+    // true only if at least one target service was present and then confirmed gone (i.e. a reinstall
+    // is now worth retrying); false when there was nothing to wait on or nothing cleared in time.
+    //
+    bool WaitForInfFilterServicesGone(const argh::parser& cmdl, const std::string& infPath,
+                                      std::chrono::milliseconds timeout);
+
+    //
     // A single device detached from the system in preparation for a driver upgrade/removal,
     // recorded so a later --reenumerate-affected invocation (possibly after the process/session
     // that detached it has exited) can bring it back.
@@ -574,11 +585,33 @@ int main(int argc, char* argv[])
 
         bool rebootRequired = false;
 
-        if (const auto result = nefarius::devcon::InfDefaultInstall(nefarius::utilities::ConvertAnsiToWide(infPath),
-                                                                    &rebootRequired); !result)
+        const auto wideInfPath = nefarius::utilities::ConvertAnsiToWide(infPath);
+
+        auto installResult = nefarius::devcon::InfDefaultInstall(wideInfPath, &rebootRequired);
+
+        if (!installResult)
         {
-            logger->error("Failed to install INF file, error: %v", result.error().getErrorMessageA());
-            return result.error().getErrorCode();
+            //
+            // A filter service removed by a preceding --uninstall-filter-driver can briefly linger
+            // "marked for deletion" until its driver image finishes unloading. InstallHinfSection's
+            // AddService then fails with ERROR_SERVICE_MARKED_FOR_DELETE, surfaced opaquely at the
+            // top level as ERROR_NOT_SUPPORTED. If any service this INF (re)creates is still present,
+            // wait for it to fully clear from the SCM database and retry the install once before
+            // giving up, rather than forcing the user into a manual retry (or a reboot).
+            // 
+            const int settleTimeoutMs = ParseTimeoutMs(cmdl, "--stop-timeout", 10000);
+
+            if (WaitForInfFilterServicesGone(cmdl, infPath, std::chrono::milliseconds(settleTimeoutMs)))
+            {
+                logger->verbose(1, "Retrying INF install now that a lingering filter service has cleared");
+                installResult = nefarius::devcon::InfDefaultInstall(wideInfPath, &rebootRequired);
+            }
+        }
+
+        if (!installResult)
+        {
+            logger->error("Failed to install INF file, error: %v", installResult.error().getErrorMessageA());
+            return installResult.error().getErrorCode();
         }
 
         logger->info("INF file installed successfully");
@@ -700,6 +733,25 @@ int main(int argc, char* argv[])
 
         const int stopTimeoutMs = ParseTimeoutMs(cmdl, "--stop-timeout", 10000);
         const int retryTimeoutMs = ParseTimeoutMs(cmdl, "--retry-timeout", 5000);
+
+        //
+        // The restart above tore down/rebuilt the affected device stacks, which is what actually
+        // unloads a class filter driver (it does not honor a live SCM stop request). Give that
+        // unload a chance to land before deleting: DeleteService fully removes a service that is
+        // already SERVICE_STOPPED, but only *marks for deletion* one whose driver is still loaded,
+        // leaving a lingering registration that makes an immediate reinstall fail with
+        // ERROR_SERVICE_MARKED_FOR_DELETE. Waiting for SERVICE_STOPPED here closes that
+        // install/uninstall-cycle gap. A missing service (nothing to stop) or a wait timeout are
+        // both fine - we fall through to the delete-with-retry either way.
+        // 
+        if (const auto stopped = nefarius::winapi::services::WaitForServiceState(
+            serviceName, SERVICE_STOPPED, std::chrono::milliseconds(stopTimeoutMs)); stopped)
+        {
+            logger->verbose(1, stopped->dwCurrentState == SERVICE_STOPPED
+                                   ? "Filter service \"%v\" is stopped; deleting"
+                                   : "Filter service \"%v\" not stopped in time; deleting anyway",
+                            serviceName);
+        }
 
         if (const auto deleteResult = nefarius::winapi::services::DeleteDriverServiceWithRetry(
             serviceName, std::chrono::milliseconds(stopTimeoutMs), std::chrono::milliseconds(retryTimeoutMs),
@@ -1856,6 +1908,87 @@ namespace
         }
 
         return result;
+    }
+
+    bool WaitForInfFilterServicesGone(const argh::parser& cmdl, const std::string& infPath,
+                                      std::chrono::milliseconds timeout)
+    {
+        el::Logger* logger = el::Loggers::getLogger("default");
+
+        const auto discovered = DiscoverClassFilterTargets(cmdl, infPath);
+
+        //
+        // Collect the distinct service names the INF declares. If discovery failed or the INF
+        // registers no filter service, there is nothing service-specific to wait on.
+        // 
+        std::vector<std::wstring> serviceNames;
+
+        for (const auto& target : discovered.Targets)
+        {
+            if (target.ServiceName.empty())
+            {
+                continue;
+            }
+
+            const bool alreadyListed = std::any_of(serviceNames.begin(), serviceNames.end(),
+                                                    [&target](const std::wstring& existing)
+                                                    {
+                                                        return _wcsicmp(existing.c_str(),
+                                                                        target.ServiceName.c_str()) == 0;
+                                                    });
+
+            if (!alreadyListed)
+            {
+                serviceNames.push_back(target.ServiceName);
+            }
+        }
+
+        if (serviceNames.empty())
+        {
+            return false;
+        }
+
+        bool anyCleared = false;
+
+        for (const auto& serviceName : serviceNames)
+        {
+            //
+            // Nothing to wait on if it isn't registered to begin with.
+            // 
+            if (!nefarius::winapi::services::GetServiceStatus(serviceName))
+            {
+                continue;
+            }
+
+            logger->verbose(1,
+                            "Filter service \"%v\" still present after install failure; waiting for it to clear",
+                            nefarius::utilities::ConvertWideToANSI(serviceName));
+
+            const auto deadline = std::chrono::steady_clock::now() + timeout;
+
+            for (;;)
+            {
+                const auto status = nefarius::winapi::services::GetServiceStatus(serviceName);
+
+                if (!status && status.error().getErrorCode() == ERROR_SERVICE_DOES_NOT_EXIST)
+                {
+                    anyCleared = true;
+                    break;
+                }
+
+                const auto now = std::chrono::steady_clock::now();
+
+                if (now >= deadline)
+                {
+                    break;
+                }
+
+                const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+                Sleep(static_cast<DWORD>(std::min<std::chrono::milliseconds::rep>(200, remaining.count())));
+            }
+        }
+
+        return anyCleared;
     }
 
     void RestartAffectedDevicesForInf(const argh::parser& cmdl, const std::string& infPath, bool& rebootRequired)
