@@ -1692,8 +1692,9 @@ namespace
     {
         if (!result.FinalStatusValid)
         {
-            return " (final devnode status could not be queried, error 0x" +
-                std::to_string(result.FinalStatusError) + ")";
+            char errBuf[32];
+            snprintf(errBuf, sizeof(errBuf), "0x%lX", static_cast<unsigned long>(result.FinalStatusError));
+            return std::string(" (final devnode status could not be queried, error ") + errBuf + ")";
         }
 
         std::string detail = " (final devnode state: started=";
@@ -1948,47 +1949,61 @@ namespace
             return false;
         }
 
-        bool anyCleared = false;
+        //
+        // Record which of the declared services are actually present right now; only those can
+        // block a reinstall. If none are present, there is nothing to wait on.
+        // 
+        std::vector<std::wstring> pending;
 
         for (const auto& serviceName : serviceNames)
         {
-            //
-            // Nothing to wait on if it isn't registered to begin with.
-            // 
-            if (!nefarius::winapi::services::GetServiceStatus(serviceName))
+            if (nefarius::winapi::services::GetServiceStatus(serviceName))
             {
-                continue;
-            }
-
-            logger->verbose(1,
-                            "Filter service \"%v\" still present after install failure; waiting for it to clear",
-                            nefarius::utilities::ConvertWideToANSI(serviceName));
-
-            const auto deadline = std::chrono::steady_clock::now() + timeout;
-
-            for (;;)
-            {
-                const auto status = nefarius::winapi::services::GetServiceStatus(serviceName);
-
-                if (!status && status.error().getErrorCode() == ERROR_SERVICE_DOES_NOT_EXIST)
-                {
-                    anyCleared = true;
-                    break;
-                }
-
-                const auto now = std::chrono::steady_clock::now();
-
-                if (now >= deadline)
-                {
-                    break;
-                }
-
-                const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
-                Sleep(static_cast<DWORD>(std::min<std::chrono::milliseconds::rep>(200, remaining.count())));
+                pending.push_back(serviceName);
+                logger->verbose(1,
+                                "Filter service \"%v\" still present after install failure; waiting for it to clear",
+                                nefarius::utilities::ConvertWideToANSI(serviceName));
             }
         }
 
-        return anyCleared;
+        if (pending.empty())
+        {
+            return false;
+        }
+
+        //
+        // A reinstall is only worth retrying once *every* initially present service has fully left
+        // the SCM database, since InstallHinfSection re-creates each of them. Wait for all of them
+        // under a single shared deadline; a service that keeps returning a status (or any error
+        // other than ERROR_SERVICE_DOES_NOT_EXIST), or that is still present when the deadline
+        // expires, leaves the wait unsuccessful so we don't retry straight back into the same
+        // ERROR_SERVICE_MARKED_FOR_DELETE.
+        // 
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+
+        for (;;)
+        {
+            std::erase_if(pending, [](const std::wstring& serviceName)
+            {
+                const auto status = nefarius::winapi::services::GetServiceStatus(serviceName);
+                return !status && status.error().getErrorCode() == ERROR_SERVICE_DOES_NOT_EXIST;
+            });
+
+            if (pending.empty())
+            {
+                return true;
+            }
+
+            const auto now = std::chrono::steady_clock::now();
+
+            if (now >= deadline)
+            {
+                return false;
+            }
+
+            const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+            Sleep(static_cast<DWORD>(std::min<std::chrono::milliseconds::rep>(200, remaining.count())));
+        }
     }
 
     void RestartAffectedDevicesForInf(const argh::parser& cmdl, const std::string& infPath, bool& rebootRequired)
@@ -2211,8 +2226,14 @@ namespace
             }
             else
             {
+                //
+                // The INF's AddService was supposed to register this service; not finding it at all
+                // right after a successful install is a genuine settle anomaly, so escalate it the
+                // same way the other unverifiable branches above do instead of silently warning.
+                // 
                 logger->warn("Filter service \"%v\" could not be found after install, error: %v",
                              serviceNameA, status.error().getErrorMessageA());
+                rebootRequired = true;
             }
         }
     }
