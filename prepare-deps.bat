@@ -39,7 +39,7 @@ if not exist "vcpkg\vcpkg.exe" (
  )
 )
 
-REM Use persistent binary cache on CI (set VCPKG_CACHE_PATH on server or in appveyor.yml)
+REM Use persistent binary cache on CI (set VCPKG_CACHE_PATH to a cache directory)
 set "VCPKG_EXTRA_OPTIONS="
 if defined VCPKG_CACHE_PATH (
  set "VCPKG_BINARY_SOURCES=clear;files,%VCPKG_CACHE_PATH%,readwrite"
