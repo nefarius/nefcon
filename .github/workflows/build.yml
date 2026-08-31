@@ -255,4 +255,28 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $tag = $env:GITHUB_REF_NAME
           $zip = "nefcon_$tag.zip"
-          gh release create $tag $zip --title $tag --generate-notes
+
+          $previousNativePreference = $PSNativeCommandUseErrorActionPreference
+          $PSNativeCommandUseErrorActionPreference = $false
+          try {
+            gh release view $tag --json tagName 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              gh release create $tag --draft --title $tag --generate-notes
+              if ($LASTEXITCODE -ne 0) {
+                throw "Failed to create draft release for '$tag'."
+              }
+            }
+
+            gh release upload $tag $zip --clobber
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to upload asset to release '$tag'."
+            }
+
+            gh release edit $tag --draft=false
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to publish release '$tag'."
+            }
+          }
+          finally {
+            $PSNativeCommandUseErrorActionPreference = $previousNativePreference
+          }
