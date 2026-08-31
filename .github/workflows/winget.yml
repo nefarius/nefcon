@@ -6,11 +6,14 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions: {}
     env:
       CARGO_TERM_COLOR: always
     steps:
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master, 2026-08-05
+        with:
+          toolchain: stable
 
       # Pin Komac to the merge that restored architecture detection for
       # multi-architecture ZIP installers (russellbanks/Komac#1609).
@@ -26,9 +29,9 @@ jobs:
         id: release
         env:
           ASSETS: ${{ toJson(github.event.release.assets) }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
-          version="${{ github.event.release.tag_name }}"
-          version="${version#v}"
+          version="${TAG_NAME#v}"
           urls=$(echo "$ASSETS" | jq -r '[.[] | select(.name | test("\\.zip$")) | .browser_download_url] | join(" ")')
           if [ -z "$urls" ]; then
             echo "::error::No .zip release asset found"
@@ -49,11 +52,14 @@ jobs:
           KOMAC_CREATED_WITH: nefcon GitHub Actions
           KOMAC_CREATED_WITH_URL: ${{ github.server_url }}/${{ github.repository }}/blob/HEAD/.github/workflows/winget.yml
           GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
-        run: >-
-          komac update Nefarius.nefcon
-          --version ${{ steps.release.outputs.version }}
-          --submit
-          --urls ${{ steps.release.outputs.urls }}
+          PACKAGE_VERSION: ${{ steps.release.outputs.version }}
+          INSTALLER_URLS: ${{ steps.release.outputs.urls }}
+        run: |
+          read -r -a urls <<< "$INSTALLER_URLS"
+          komac update Nefarius.nefcon \
+            --version "$PACKAGE_VERSION" \
+            --submit \
+            --urls "${urls[@]}"
 
       - name: Clean up merged submission branches
         env:
