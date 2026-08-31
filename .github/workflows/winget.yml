@@ -6,9 +6,57 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
     steps:
-      - uses: vedantmgoyal2009/winget-releaser@main
-        with:
-          identifier: Nefarius.nefcon
-          installers-regex: '\.zip$'
-          token: ${{ secrets.WINGET_TOKEN }}
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # Pin Komac to the merge that restored architecture detection for
+      # multi-architecture ZIP installers (russellbanks/Komac#1609).
+      # Latest released Komac 2.16.0 marks every nested installer as
+      # `neutral`, which WinGet rejects.
+      - name: Install Komac
+        run: >-
+          cargo install --git https://github.com/russellbanks/Komac.git
+          --rev 22ff95bb888399829dbe43af72a41a59436a739c
+          --locked --force
+
+      - name: Resolve version and installer URLs
+        id: release
+        env:
+          ASSETS: ${{ toJson(github.event.release.assets) }}
+        run: |
+          version="${{ github.event.release.tag_name }}"
+          version="${version#v}"
+          urls=$(echo "$ASSETS" | jq -r '[.[] | select(.name | test("\\.zip$")) | .browser_download_url] | join(" ")')
+          if [ -z "$urls" ]; then
+            echo "::error::No .zip release asset found"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "urls=$urls" >> "$GITHUB_OUTPUT"
+
+      - name: Sync winget-pkgs fork
+        env:
+          KOMAC_FORK_OWNER: ${{ github.repository_owner }}
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: komac sync-fork
+
+      - name: Submit WinGet manifest
+        env:
+          KOMAC_FORK_OWNER: ${{ github.repository_owner }}
+          KOMAC_CREATED_WITH: nefcon GitHub Actions
+          KOMAC_CREATED_WITH_URL: ${{ github.server_url }}/${{ github.repository }}/blob/HEAD/.github/workflows/winget.yml
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: >-
+          komac update Nefarius.nefcon
+          --version ${{ steps.release.outputs.version }}
+          --submit
+          --urls ${{ steps.release.outputs.urls }}
+
+      - name: Clean up merged submission branches
+        env:
+          KOMAC_FORK_OWNER: ${{ github.repository_owner }}
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: komac cleanup --only-merged
