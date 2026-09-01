@@ -77,7 +77,7 @@ jobs:
           Write-Host "vcpkg HEAD $rev"
 
       - name: Restore vcpkg binary cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.VCPKG_CACHE_PATH }}
           key: vcpkg-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}-${{ steps.vcpkg.outputs.head }}
