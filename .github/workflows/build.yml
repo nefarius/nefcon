@@ -177,7 +177,7 @@ jobs:
           }
 
       - name: Download unsigned binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: nefcon-*
           path: artifacts
