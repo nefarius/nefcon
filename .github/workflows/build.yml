@@ -153,7 +153,7 @@ jobs:
           Write-Host "Staged binaries from $src to $dst"
 
       - name: Upload unsigned binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nefcon-${{ matrix.platform }}
           path: staged/${{ matrix.platform }}/
