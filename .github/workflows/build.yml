@@ -230,7 +230,9 @@ jobs:
           server: https://signrelay.api.nefarius.systems/
           token: ${{ secrets.SIGN_RELAY_CI_TOKEN }}
           files: |
-            ./bin/**/*.exe
+            ./bin/x86/*.exe
+            ./bin/x64/*.exe
+            ./bin/ARM64/*.exe
           in-place: 'true'
           timeout: '00:45:00'
           tool-version: '1.2.0'
