@@ -128,6 +128,24 @@ namespace
     //
     void DetachAffectedDevicesForService(const argh::parser& cmdl, const std::string& serviceName);
 
+	//
+	// Derives the base name of the original INF file a driver store package was staged from out
+	// of the package's FileRepository directory name, e.g.
+	// "...\FileRepository\example1.inf_amd64_5ca6d479976bcd98\example1.inf" yields
+	// "example1.inf". Returns std::nullopt if the path doesn't follow the
+	// "<originalInfName>_<arch>_<hash>" layout, so callers can fail closed.
+	//
+	std::optional<std::wstring> TryGetOriginalInfNameOfStorePackage(const std::wstring& driverPackageInfPath);
+
+	//
+	// Returns true when the driver store contains at least one package whose original INF file
+	// name (derived from its FileRepository directory) matches the base name of infPath. Used to
+	// gate the driver-store purge of --uninstall-filter-driver on the package actually belonging
+	// to the INF whose service is being removed, so a package that merely shares the same
+	// [Version] identity cannot be deleted by mistake.
+	//
+	bool IsStorePackageForInf(const std::string& infPath);
+
 #if !defined(NEFCON_WINMAIN)
     void CustomizeEasyLoggingColoredConsole();
 #endif
@@ -773,6 +791,11 @@ int main(int argc, char* argv[])
             if (_access(storeInfPath.c_str(), 0) != 0)
             {
                 logger->warn("The given --inf-path \"%v\" doesn't exist; skipping driver store purge",
+                             storeInfPath);
+            }
+            else if (!IsStorePackageForInf(storeInfPath))
+            {
+                logger->warn("The driver store does not contain a package for \"%v\"; skipping driver store purge",
                              storeInfPath);
             }
             else if (const auto purgeResult = nefarius::devcon::RemoveDriverStorePackage(
@@ -2786,6 +2809,111 @@ namespace
 
         return result;
     }
+
+	//
+	// Derives the base name of the original INF file a driver store package was staged from out
+	// of the package's FileRepository directory name, e.g.
+	// "...\FileRepository\example1.inf_amd64_5ca6d479976bcd98\example1.inf" yields
+	// "example1.inf". Returns std::nullopt if the path doesn't follow the
+	// "<originalInfName>_<arch>_<hash>" layout, so callers can fail closed.
+	//
+	std::optional<std::wstring> TryGetOriginalInfNameOfStorePackage(const std::wstring& driverPackageInfPath)
+	{
+		std::wstring packageDirName(driverPackageInfPath);
+		const auto lastSeparator = packageDirName.find_last_of(L'\\');
+
+		if (lastSeparator == std::wstring::npos)
+		{
+			return std::nullopt;
+		}
+
+		//
+		// The staged copy of the INF lives inside its package directory, which is the component
+		// right before the final one when the path ends in the INF file itself.
+		//
+		const std::wstring lastComponent(packageDirName, lastSeparator + 1);
+
+		if (lastComponent.size() >= 4 &&
+			_wcsicmp(lastComponent.c_str() + lastComponent.size() - 4, L".inf") == 0)
+		{
+			packageDirName.erase(lastSeparator);
+
+			const auto dirSeparator = packageDirName.find_last_of(L'\\');
+
+			if (dirSeparator == std::wstring::npos)
+			{
+				return std::nullopt;
+			}
+
+			packageDirName.erase(0, dirSeparator + 1);
+		}
+		else
+		{
+			packageDirName.erase(0, lastSeparator + 1);
+		}
+
+		//
+		// The original name is the prefix up to the last ".inf_" separator (mirrors the
+		// greedy "(.+\.inf)_.+$" extraction used by DriverStoreExplorer).
+		//
+		PCWSTR lastInfoSeparator = nullptr;
+		PCWSTR cursor = packageDirName.c_str();
+
+		while (const auto* occurrence = wcsstr(cursor, L".inf_"))
+		{
+			lastInfoSeparator = occurrence;
+			cursor = occurrence + 1;
+		}
+
+		//
+		// Fail closed: the separator needs a non-empty prefix, and there must be at least one
+		// character (architecture/hash) after it.
+		//
+		if (lastInfoSeparator == nullptr || lastInfoSeparator == packageDirName.c_str() ||
+			lastInfoSeparator + 5 >= packageDirName.c_str() + packageDirName.size())
+		{
+			return std::nullopt;
+		}
+
+		return packageDirName.substr(0,
+			static_cast<size_t>(lastInfoSeparator - packageDirName.c_str()) + 4);
+	}
+
+	//
+	// Returns true when the driver store contains at least one package whose original INF file
+	// name (derived from its FileRepository directory) matches the base name of infPath. Used to
+	// gate the driver-store purge of --uninstall-filter-driver on the package actually belonging
+	// to the INF whose service is being removed, so a package that merely shares the same
+	// [Version] identity cannot be deleted by mistake.
+	//
+	bool IsStorePackageForInf(const std::string& infPath)
+	{
+		std::string normalizedPath(infPath);
+		std::replace(normalizedPath.begin(), normalizedPath.end(), '/', '\\');
+
+		const auto separator = normalizedPath.find_last_of('\\');
+		const std::string infBaseName = separator != std::string::npos
+			? normalizedPath.substr(separator + 1)
+			: normalizedPath;
+
+		const auto packages = nefarius::devcon::EnumerateDriverStorePackages();
+		if (!packages)
+		{
+			return false;
+		}
+
+		for (const auto& package : packages.value())
+		{
+			const auto originalName = TryGetOriginalInfNameOfStorePackage(package.DriverPackageInfPath);
+			if (originalName && _wcsicmp(originalName->c_str(),
+										 nefarius::utilities::ConvertAnsiToWide(infBaseName).c_str()) == 0)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
 
 #if !defined(NEFCON_WINMAIN)
     /**
