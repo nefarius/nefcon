@@ -29,6 +29,7 @@
 // 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <filesystem>
 #include <algorithm>
 #include <cctype>

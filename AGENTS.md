@@ -71,7 +71,40 @@ Use this while iterating on `neflib` source before it's ready to publish:
    genuinely-valid, still-applicable issues with minimal targeted changes, and explicitly
    skip/justify anything that's pre-existing/out-of-scope/design-level rather than attempting a
    risky broad refactor inside an unrelated PR. Rebuild and re-verify before pushing again.
-6. Once approved, merge the `neflib` PR to its `master`.
+6. **Do not merge on green CI alone.** A passing `build` check says nothing about whether the
+   automated reviewer's findings were actually addressed. Every time the branch is pushed
+   (including follow-up fix commits), re-check for pending review feedback before merging.
+   `gh pr view <num> --json comments -q '.comments[-3:]'` is **not sufficient**: it only shows
+   the last few top-level issue comments, not per-line review threads, and doesn't confirm
+   they refer to the branch's current tip. Instead, query threads and reviews via paginated
+   GraphQL, filtered against the PR's current `headRefOid`:
+
+   ```powershell
+   gh api graphql -f query='
+     query($owner:String!,$repo:String!,$pr:Int!,$cursor:String) {
+       repository(owner:$owner, name:$repo) {
+         pullRequest(number:$pr) {
+           headRefOid
+           reviews(last:20) { nodes { author { login } state commit { oid } } }
+           reviewThreads(first:100, after:$cursor) {
+             pageInfo { hasNextPage endCursor }
+             nodes {
+               isResolved
+               comments(first:1) { nodes { author { login } body path line } }
+             }
+           }
+         }
+       }
+     }' -f owner=nefarius -f repo=<neflib|nefcon> -F pr=<num>
+   ```
+
+   Page through `reviewThreads` with the returned `endCursor` while `hasNextPage` is true (a
+   large review can exceed 100 threads). Only merge once, for the PR's current `headRefOid`:
+   - every `reviewThreads` node has `isResolved: true` (an unresolved CodeRabbit/human thread
+     means a finding is still pending), and
+   - no `reviews` node from a human reviewer is in `CHANGES_REQUESTED` state without a
+     subsequent approving review.
+7. Once approved, merge the `neflib` PR to its `master`.
 
 ### 2. Update the version pointers and publish
 
