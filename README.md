@@ -85,7 +85,7 @@ winget install nefcon
 
 ## Command Reference
 
-All commands require **Administrator** privileges unless noted. Paths may be absolute or relative to the current working directory. GUID format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (brackets optional). Check exit code `ERROR_SUCCESS_REBOOT_REQUIRED` (3010) when a reboot is needed. An unrecognized or incomplete command line prints usage and returns a non-zero exit code; `--help` / `-h` or no arguments still return 0.
+All commands require **Administrator** privileges unless noted. Paths may be absolute or relative to the current working directory. GUID format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (brackets optional). Check exit code `ERROR_SUCCESS_REBOOT_REQUIRED` (3010) when a reboot is needed. An unrecognized command line prints usage and returns a non-zero exit code. A recognized command that is missing a required value logs an error and returns `EXIT_FAILURE` without printing usage. `--help` / `-h` or no arguments still return 0.
 
 | Command | Description |
 |---------|-------------|
@@ -110,7 +110,7 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 | `install [INFFile] [HardwareID]` | devcon-compatible ROOT device + driver install |
 | `remove [HardwareID]` | devcon-compatible device removal (device only, driver stays in store) |
 | `-h, --help` | Print usage (no admin) |
-| `-v, --version` | Display version |
+| `-v, --version` | Display version (no admin) |
 
 ### Driver installation
 
