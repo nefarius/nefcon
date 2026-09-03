@@ -25,6 +25,21 @@ namespace
 
     std::string GetImageBasePath();
 
+    //
+    // Shared replacement for the "_access() then GetFileAttributesA()" pattern repeated across
+    // several command handlers below. Distinguishes a missing path from an attribute-query
+    // failure (the previous per-callsite code treated GetFileAttributesA's INVALID_FILE_ATTRIBUTES
+    // sentinel as if it were the FILE_ATTRIBUTE_DIRECTORY bit, silently misreporting *any*
+    // attribute-query failure - e.g. ERROR_ACCESS_DENIED on a permission-restricted path - as "is
+    // a directory, not a file") and quotes the path in every message so it is unambiguous which
+    // of several similarly-named --*-path arguments failed.
+    //
+    // Returns true only if Path exists, is queryable, and is not a directory (a plain file or
+    // something else GetFileAttributesA doesn't refuse); logs a specific error and returns false
+    // otherwise.
+    //
+    bool ValidateExistingFilePath(const std::string& path, const char* pathDescription);
+
     enum class DeviceExistsResult { Found, NotFound, Error };
 
     DeviceExistsResult DeviceExists(const std::string& hwId, int& errorCode);
@@ -203,6 +218,13 @@ int main(int argc, char* argv[])
 #endif
 
     el::Logger* logger = el::Loggers::getLogger("default");
+
+    //
+    // Surface neflib's optional diagnostics (restart strategy attempts, INF install dialog
+    // interception, service-deletion retries, ...) through the same logger/--verbose gate as
+    // every other log line in this file; see NeflibDiagnostics.hpp for the exact mapping.
+    // 
+    nefarius::nefcon::RegisterNeflibDiagnosticsAdapter();
 
     const auto arguments = cliArgs.value().Arguments;
 
@@ -581,23 +603,8 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (_access(infPath.c_str(), 0) != 0)
+        if (!ValidateExistingFilePath(infPath, "INF path"))
         {
-            logger->error("The given INF file doesn't exist, is the path correct?");
-            return EXIT_FAILURE;
-        }
-
-        const DWORD attribs = GetFileAttributesA(infPath.c_str());
-
-        if (attribs == INVALID_FILE_ATTRIBUTES)
-        {
-            logger->error("Failed to query attributes of the given INF path, error: %v", GetLastError());
-            return EXIT_FAILURE;
-        }
-
-        if (attribs & FILE_ATTRIBUTE_DIRECTORY)
-        {
-            logger->error("The given INF path is a directory, not a file");
             return EXIT_FAILURE;
         }
 
@@ -836,17 +843,8 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (_access(infPath.c_str(), 0) != 0)
+        if (!ValidateExistingFilePath(infPath, "INF path"))
         {
-            logger->error("The given INF file doesn't exist, is the path correct?");
-            return EXIT_FAILURE;
-        }
-
-        const DWORD attribs = GetFileAttributesA(infPath.c_str());
-
-        if (attribs & FILE_ATTRIBUTE_DIRECTORY)
-        {
-            logger->error("The given INF path is a directory, not a file");
             return EXIT_FAILURE;
         }
 
@@ -877,17 +875,8 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (_access(infPath.c_str(), 0) != 0)
+        if (!ValidateExistingFilePath(infPath, "INF path"))
         {
-            logger->error("The given INF file doesn't exist, is the path correct?");
-            return EXIT_FAILURE;
-        }
-
-        const DWORD attribs = GetFileAttributesA(infPath.c_str());
-
-        if (attribs & FILE_ATTRIBUTE_DIRECTORY)
-        {
-            logger->error("The given INF path is a directory, not a file");
             return EXIT_FAILURE;
         }
 
@@ -918,17 +907,8 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (_access(binPath.c_str(), 0) != 0)
+        if (!ValidateExistingFilePath(binPath, "binary path"))
         {
-            logger->error("The given binary file doesn't exist, is the path correct?");
-            return EXIT_FAILURE;
-        }
-
-        const DWORD attribs = GetFileAttributesA(binPath.c_str());
-
-        if (attribs & FILE_ATTRIBUTE_DIRECTORY)
-        {
-            logger->error("The given binary path is a directory, not a file");
             return EXIT_FAILURE;
         }
 
@@ -1071,22 +1051,14 @@ int main(int argc, char* argv[])
             const auto result = nefarius::devcon::ReenumerateParentDevNode(
                 parentInstanceId, std::chrono::milliseconds(reenumerateTimeoutMs));
 
-            const std::string parentInstanceIdA = nefarius::utilities::ConvertWideToANSI(parentInstanceId);
-
             if (result.Succeeded)
             {
-                logger->info("Re-enumerated devnode \"%v\"", parentInstanceIdA);
-            }
-            else if (result.TimedOut)
-            {
-                anyFailed = true;
-                logger->warn("Timed out re-enumerating devnode \"%v\", a reboot may be required",
-                             parentInstanceIdA);
+                logger->info("%v", DescribeReenumerateResult(result));
             }
             else
             {
                 anyFailed = true;
-                logger->warn("Failed to re-enumerate devnode \"%v\", a reboot may be required", parentInstanceIdA);
+                logger->warn("%v, a reboot may be required", DescribeReenumerateResult(result));
             }
         }
 
@@ -1236,17 +1208,8 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (_access(infPath.c_str(), 0) != 0)
+        if (!ValidateExistingFilePath(infPath, "INF path"))
         {
-            logger->error("The given INF file doesn't exist, is the path correct?");
-            return EXIT_FAILURE;
-        }
-
-        const DWORD attribs = GetFileAttributesA(infPath.c_str());
-
-        if (attribs & FILE_ATTRIBUTE_DIRECTORY)
-        {
-            logger->error("The given INF path is a directory, not a file");
             return EXIT_FAILURE;
         }
 
@@ -1286,17 +1249,8 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (_access(infPath.c_str(), 0) != 0)
+        if (!ValidateExistingFilePath(infPath, "INF path"))
         {
-            logger->error("The given INF file doesn't exist, is the path correct?");
-            return EXIT_FAILURE;
-        }
-
-        const DWORD attribs = GetFileAttributesA(infPath.c_str());
-
-        if (attribs & FILE_ATTRIBUTE_DIRECTORY)
-        {
-            logger->error("The given INF path is a directory, not a file");
             return EXIT_FAILURE;
         }
 
@@ -1340,17 +1294,8 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        if (_access(filePath.c_str(), 0) != 0)
+        if (!ValidateExistingFilePath(filePath, "file path"))
         {
-            logger->error("The given file path doesn't exist, is the path correct?");
-            return EXIT_FAILURE;
-        }
-
-        const DWORD attribs = GetFileAttributesA(filePath.c_str());
-
-        if (attribs & FILE_ATTRIBUTE_DIRECTORY)
-        {
-            logger->error("The given file path is a directory, not a file");
             return EXIT_FAILURE;
         }
 
@@ -1403,6 +1348,7 @@ int main(int argc, char* argv[])
 
         if (findResult.value().empty())
         {
+            logger->warn("No devices matching hardware ID \"%v\" were found", hwId);
             return ERROR_NOT_FOUND;
         }
 
@@ -1513,8 +1459,18 @@ int main(int argc, char* argv[])
 
     if (cmdl[{"-v", "--version"}])
     {
-        std::cout << "nefcon version " <<
-            to_string(nefarius::winapi::fs::GetProductVersionFromFile(GetImageBasePath()).value())
+        const auto version = nefarius::winapi::fs::GetProductVersionFromFile(GetImageBasePath());
+
+        if (!version)
+        {
+            // Previously called .value() unconditionally here, which would throw
+            // std::bad_expected_access - an unhandled exception crashing the process instead of a
+            // clean error message - if the version resource couldn't be read.
+            logger->error("Failed to determine own version, error: %v", version.error().getErrorMessageA());
+            return version.error().getErrorCode();
+        }
+
+        std::cout << "nefcon version " << to_string(version.value())
             << " (C) Nefarius Software Solutions e.U."
             << '\n';
         return EXIT_SUCCESS;
@@ -1523,6 +1479,25 @@ int main(int argc, char* argv[])
 #pragma endregion
 
 #pragma region Print usage
+
+    //
+    // Reaching this point means none of the commands/branches above matched and returned, i.e.
+    // the command line was either empty/an explicit help request (both a legitimate way to ask
+    // for usage) or contained flags that didn't correspond to any recognized command (a typo, an
+    // unsupported option, or a recognized command missing a required argument value it never
+    // reached far enough to validate itself). Previously both cases silently printed the same
+    // usage text and returned EXIT_SUCCESS, so a genuine mistake (e.g. "--isntall-driver") looked
+    // indistinguishable from successfully asking for help - including to a calling script relying
+    // on the exit code.
+    // 
+    const bool explicitHelpRequested = cmdl[{"-h", "--help"}];
+    const bool noArgumentsGiven = (argc <= 1);
+
+    if (!explicitHelpRequested && !noArgumentsGiven)
+    {
+        logger->error(
+            "Unrecognized or incomplete command line; no known command matched. See usage below for the supported options");
+    }
 
 #if defined(NEFCON_WINMAIN)
     std::cout << "usage: .\\nefconw [options] [logging]" << std::endl << std::endl;
@@ -1580,11 +1555,11 @@ int main(int argc, char* argv[])
     std::cout << "      --stop-timeout           Milliseconds to wait for the service to stop, default 10000 (optional)" << '\n';
     std::cout << "      --attempt-detach-affected Best-effort attempt to detach present devices bound to this service before removal, so its driver file can be safely replaced/deleted; a reboot may still be required (optional)" << '\n';
     std::cout << "      --restart-timeout        Milliseconds to wait per device detach attempt, default 10000 (optional)" << '\n';
-    std::cout << "      --state-file             Where to persist detached devices for a later --reenumerate-affected call, default a per-service-name file in %TEMP%\\nefconc (optional)" << '\n';
+    std::cout << "      --state-file             Where to persist detached devices for a later --reenumerate-affected call, default a per-service-name file under %ProgramData%\\nefconc, restricted to Administrators/SYSTEM (optional)" << '\n';
     std::cout << "    --reenumerate-affected     Re-enumerates devices previously detached via --remove-driver-service --attempt-detach-affected" << '\n';
     std::cout << "      --service-name           The driver service name whose detached devices to re-enumerate (required)" << '\n';
     std::cout << "      --restart-timeout        Milliseconds to wait per devnode re-enumeration attempt, default 10000 (optional)" << '\n';
-    std::cout << "      --state-file             Where to read detached devices from, default a per-service-name file in %TEMP%\\nefconc (optional)" << '\n';
+    std::cout << "      --state-file             Where to read detached devices from, default matches --remove-driver-service's default under %ProgramData%\\nefconc (optional)" << '\n';
     std::cout << "    --inf-default-install      Installs an INF file with a [DefaultInstall] section" << '\n';
     std::cout << "      --inf-path               Path to the INF file to install, absolute or relative to CWD (required)" << '\n';
     std::cout << "      --attempt-restart-affected Best-effort attempt to restart devices affected by any class filter changes; a reboot may still be required (optional)" << '\n';
@@ -1611,7 +1586,7 @@ int main(int argc, char* argv[])
     std::cout << "  logging:" << '\n';
     std::cout << "    --default-log-file=.\\log.txt       Write details of execution to a log file (optional)" <<
         '\n';
-    std::cout << "    --verbose                          Turn on verbose/diagnostic logging (optional)" << '\n';
+    std::cout << "    --verbose                          Turn on verbose/diagnostic logging: per-command-step detail plus intermediate neflib events (restart strategy attempts, service-deletion retries, ...) not shown otherwise (optional)" << '\n';
     std::cout << '\n';
     std::cout << "  devcon:" << '\n';
     std::cout << "    install [INFFile] [HardwareID]     Creates and installs a ROOT-enumerated device and driver" <<
@@ -1626,7 +1601,7 @@ int main(int argc, char* argv[])
 
 #pragma endregion
 
-    return EXIT_SUCCESS;
+    return (explicitHelpRequested || noArgumentsGiven) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 namespace
@@ -1639,7 +1614,7 @@ namespace
 
         if (!isAdmin)
         {
-            logger->error("Failed to determine elevation status, error: ", isAdmin.error().getErrorMessageA());
+            logger->error("Failed to determine elevation status, error: %v", isAdmin.error().getErrorMessageA());
             errorCode = EXIT_FAILURE;
             return false;
         }
@@ -1655,79 +1630,48 @@ namespace
         return true;
     }
 
-    const char* ToString(nefarius::devcon::RestartStrategy strategy)
+    bool ValidateExistingFilePath(const std::string& path, const char* pathDescription)
     {
-        switch (strategy)
-        {
-        case nefarius::devcon::RestartStrategy::UsbPortCycle:
-            return "USB port cycle";
-        case nefarius::devcon::RestartStrategy::PropertyChange:
-            return "property change";
-        case nefarius::devcon::RestartStrategy::RemoveAndReenumerate:
-            return "remove and re-enumerate";
-        case nefarius::devcon::RestartStrategy::None:
-        default:
-            return "none";
-        }
-    }
+        el::Logger* logger = el::Loggers::getLogger("default");
 
-    // Only the CM_PROB_* codes that are plausible for a device that just went through a restart
-    // ladder are named; anything else is reported as its raw numeric value so nothing is hidden.
-    std::string ProblemCodeToString(ULONG problemCode)
-    {
-        switch (problemCode)
+        if (_access(path.c_str(), 0) != 0)
         {
-        case CM_PROB_NEED_RESTART:
-            return "CM_PROB_NEED_RESTART";
-        case CM_PROB_WILL_BE_REMOVED:
-            return "CM_PROB_WILL_BE_REMOVED";
-        case CM_PROB_MOVED:
-            return "CM_PROB_MOVED";
-        case CM_PROB_TOO_EARLY:
-            return "CM_PROB_TOO_EARLY";
-        case CM_PROB_NO_VALID_LOG_CONF:
-            return "CM_PROB_NO_VALID_LOG_CONF";
-        case CM_PROB_FAILED_INSTALL:
-            return "CM_PROB_FAILED_INSTALL";
-        case CM_PROB_HARDWARE_DISABLED:
-            return "CM_PROB_HARDWARE_DISABLED";
-        case CM_PROB_NOT_CONFIGURED:
-            return "CM_PROB_NOT_CONFIGURED";
-        case CM_PROB_FAILED_ADD:
-            return "CM_PROB_FAILED_ADD";
-        case CM_PROB_DISABLED_SERVICE:
-            return "CM_PROB_DISABLED_SERVICE";
-        case CM_PROB_DEVICE_NOT_THERE:
-            return "CM_PROB_DEVICE_NOT_THERE";
-        case CM_PROB_REGISTRY:
-            return "CM_PROB_REGISTRY";
-        case CM_PROB_PHANTOM:
-            return "CM_PROB_PHANTOM";
-        default:
-            return std::to_string(problemCode);
-        }
-    }
-
-    // Appended to failure/warning log lines for a still-present device so verbose logs can
-    // distinguish one that is genuinely stuck (has a problem code) from one that simply took
-    // slightly longer than a single strategy's verify window - the two used to look identical.
-    std::string DescribeFinalDevNodeState(const nefarius::devcon::DeviceRestartResult& result)
-    {
-        if (!result.FinalStatusValid)
-        {
-            char errBuf[32];
-            snprintf(errBuf, sizeof(errBuf), "0x%lX", static_cast<unsigned long>(result.FinalStatusError));
-            return std::string(" (final devnode status could not be queried, error ") + errBuf + ")";
+            // _access() reports failure via errno (a C runtime code, e.g. ENOENT/EACCES), not
+            // GetLastError()/a Win32 code, so it is described via strerror_s() rather than
+            // Win32Error, which would otherwise misinterpret the numeric value as a Win32 code.
+            char errorMessage[256] = {};
+            strerror_s(errorMessage, errno);
+            logger->error("The given %v \"%v\" doesn't exist or is inaccessible, is the path correct? (%v)",
+                         pathDescription, path, errorMessage);
+            return false;
         }
 
-        std::string detail = " (final devnode state: started=";
-        detail += result.FinalStarted ? "true" : "false";
-        detail += result.FinalHasProblem
-                       ? (", problem=" + ProblemCodeToString(result.FinalProblemCode))
-                       : std::string(", no problem code");
-        detail += ")";
-        return detail;
+        const DWORD attribs = GetFileAttributesA(path.c_str());
+
+        if (attribs == INVALID_FILE_ATTRIBUTES)
+        {
+            logger->error("Failed to query attributes of %v \"%v\", error: %v",
+                         pathDescription, path,
+                         nefarius::utilities::Win32Error("GetFileAttributesA").getErrorMessageA());
+            return false;
+        }
+
+        if (attribs & FILE_ATTRIBUTE_DIRECTORY)
+        {
+            logger->error("The given %v \"%v\" is a directory, not a file", pathDescription, path);
+            return false;
+        }
+
+        return true;
     }
+
+    // ToString(RestartStrategy)/ProblemCodeToString/DescribeFinalDevNodeState/
+    // Describe*Result used to be duplicated here; they now live in neflib's DiagnosticsFormat.hpp
+    // (nefarius::devcon namespace) so both nefcon and any other neflib consumer share a single
+    // implementation.
+    using nefarius::devcon::DescribeDeviceRestartResult;
+    using nefarius::devcon::DescribeDetachResult;
+    using nefarius::devcon::DescribeReenumerateResult;
 
     RestartAffectedDevicesResult RestartAffectedDevices(const std::vector<GUID>& classGuids,
                                                         std::chrono::milliseconds timeout)
@@ -1768,44 +1712,19 @@ namespace
 
                 const auto result = nefarius::devcon::RestartDeviceInstance(instanceId, options);
 
-                const std::wstring displayName = result.FriendlyName.empty()
-                                                     ? result.InstanceId
-                                                     : result.FriendlyName;
-                const std::string displayNameA = nefarius::utilities::ConvertWideToANSI(displayName);
+                // Shared with neflib's own (Verbose-only) diagnostics so the exact same wording is
+                // used whether a consumer only looks at this summary or also has --verbose on.
+                const std::string description = DescribeDeviceRestartResult(result);
 
-                // Only meaningful for a still-present device; the !DevicePresent branch below
-                // never consults it.
-                const std::string finalStateDetail = DescribeFinalDevNodeState(result);
-
-                if (result.Succeeded)
+                if (result.Succeeded || !result.DevicePresent)
                 {
-                    logger->info("Restarted device \"%v\" via %v", displayNameA, ToString(result.Strategy));
-                }
-                else if (!result.DevicePresent)
-                {
-                    // The device disappeared during the restart ladder (unplugged, or a phantom
-                    // node) - there is nothing left to restart, this is informational rather than
-                    // a failure.
-                    logger->info("Device \"%v\" is no longer present; nothing to restart", displayNameA);
-                }
-                else if (result.TimedOut)
-                {
-                    logger->warn("Timed out attempting to restart device \"%v\" (last attempted: %v)%v",
-                                 displayNameA, ToString(result.LastAttempted), finalStateDetail);
-                }
-                else if (!result.VetoName.empty())
-                {
-                    logger->warn(
-                        "Could not restart device \"%v\", blocked by \"%v\" (%v)%v",
-                        displayNameA, nefarius::utilities::ConvertWideToANSI(result.VetoName),
-                        nefarius::utilities::Win32Error(result.LastError).getErrorMessageA(), finalStateDetail);
+                    // Success, or the device disappeared during the restart ladder (unplugged, or
+                    // a phantom node) - there is nothing left to restart, informational either way.
+                    logger->info("%v", description);
                 }
                 else
                 {
-                    logger->warn("Could not restart device \"%v\", last attempted: %v, error: %v%v",
-                                 displayNameA, ToString(result.LastAttempted),
-                                 nefarius::utilities::Win32Error(result.LastError).getErrorMessageA(),
-                                 finalStateDetail);
+                    logger->warn("%v", description);
                 }
 
                 // Escalate to "a reboot may be required" only on real evidence, never on the bare
@@ -2542,30 +2461,15 @@ namespace
             const auto result = nefarius::devcon::DetachDeviceInstance(
                 instanceId, std::chrono::milliseconds(detachTimeoutMs));
 
-            const std::wstring displayName = result.FriendlyName.empty() ? result.InstanceId : result.FriendlyName;
-            const std::string displayNameA = nefarius::utilities::ConvertWideToANSI(displayName);
-
             if (result.Succeeded)
             {
-                logger->info("Detached device \"%v\"", displayNameA);
+                logger->info("%v", DescribeDetachResult(result));
                 detached.push_back({result.InstanceId, result.ParentInstanceId});
-            }
-            else if (result.TimedOut)
-            {
-                logger->warn(
-                    "Timed out attempting to detach device \"%v\", a reboot may be required to complete this operation",
-                    displayNameA);
-            }
-            else if (!result.VetoName.empty())
-            {
-                logger->warn(
-                    "Could not detach device \"%v\", blocked by \"%v\", a reboot may be required to complete this operation",
-                    displayNameA, nefarius::utilities::ConvertWideToANSI(result.VetoName));
             }
             else
             {
-                logger->warn("Could not detach device \"%v\", a reboot may be required to complete this operation",
-                             displayNameA);
+                logger->warn("%v, a reboot may be required to complete this operation",
+                             DescribeDetachResult(result));
             }
         }
 
@@ -2888,6 +2792,8 @@ namespace
 	//
 	bool IsStorePackageForInf(const std::string& infPath)
 	{
+		el::Logger* logger = el::Loggers::getLogger("default");
+
 		std::string normalizedPath(infPath);
 		std::replace(normalizedPath.begin(), normalizedPath.end(), '/', '\\');
 
@@ -2899,6 +2805,12 @@ namespace
 		const auto packages = nefarius::devcon::EnumerateDriverStorePackages();
 		if (!packages)
 		{
+			// Distinguish "the store was enumerated and genuinely has no matching package" (the
+			// caller's own follow-up warning covers that) from "we couldn't even enumerate the
+			// store", which would otherwise silently look identical and could mask a real problem
+			// (e.g. a corrupted store) as if the package had simply never been installed.
+			logger->warn("Failed to enumerate the driver store while looking for a package matching \"%v\", error: %v",
+			             infPath, packages.error().getErrorMessageA());
 			return false;
 		}
 
