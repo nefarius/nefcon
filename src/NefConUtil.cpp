@@ -786,6 +786,8 @@ int main(int argc, char* argv[])
         // to the exact published [Version] identity unless --all-versions asks to purge every
         // version of this package still in the store.
         // 
+        bool storePurgeFailed = false;
+
         if (const auto storeInfPath = cmdl({"--inf-path"}).str(); !storeInfPath.empty())
         {
             if (_access(storeInfPath.c_str(), 0) != 0)
@@ -807,7 +809,10 @@ int main(int argc, char* argv[])
                 filter.ServiceName = nefarius::utilities::ConvertAnsiToWide(serviceName);
                 filter.OriginalInfNames = {nefarius::utilities::ConvertAnsiToWide(infBaseName)};
 
-                if (cmdl[{"--all-versions"}])
+                bool skipStorePurge = false;
+                const bool allVersions = cmdl[{"--all-versions"}];
+
+                if (allVersions)
                 {
                     logger->verbose(1, "Purging every version of the driver store package matching \"%v\"",
                                     storeInfPath);
@@ -820,51 +825,67 @@ int main(int argc, char* argv[])
                 }
                 else
                 {
-                    logger->warn(
-                        "Could not read the [Version] identity from \"%v\"; purging by class + service + name only, which may remove more than one version",
+                    //
+                    // Without --all-versions, the caller expects an exact single-version purge.
+                    // Falling back to the version-agnostic filter here would silently widen the
+                    // match to every version of this package, so refuse instead of guessing.
+                    // 
+                    logger->error(
+                        "Could not read the [Version] identity from \"%v\"; refusing to purge without --all-versions, "
+                        "since that would risk removing more than the exact matching package",
                         storeInfPath);
+                    skipStorePurge = true;
+                    storePurgeFailed = true;
                 }
 
-                const auto purgeResults = nefarius::devcon::RemoveDriverStorePackages(filter, &rebootRequired);
+                if (!skipStorePurge)
+                {
+                    const auto purgeResults = nefarius::devcon::RemoveDriverStorePackages(filter, &rebootRequired);
 
-                if (!purgeResults)
-                {
-                    logger->warn("Failed to enumerate the driver store while purging, error: %v",
-                                 purgeResults.error().getErrorMessageA());
-                }
-                else if (purgeResults->empty())
-                {
-                    logger->warn("No matching driver store package found for \"%v\"; nothing purged",
-                                 storeInfPath);
-                }
-                else
-                {
-                    int purgedCount = 0;
-                    int failedCount = 0;
-
-                    for (const auto& result : purgeResults.value())
+                    if (!purgeResults)
                     {
-                        if (result.Removed)
+                        logger->warn("Failed to enumerate the driver store while purging, error: %v",
+                                     purgeResults.error().getErrorMessageA());
+                        storePurgeFailed = true;
+                    }
+                    else if (purgeResults->empty())
+                    {
+                        logger->warn("No matching driver store package found for \"%v\"; nothing purged",
+                                     storeInfPath);
+                    }
+                    else
+                    {
+                        int purgedCount = 0;
+                        int failedCount = 0;
+
+                        for (const auto& result : purgeResults.value())
                         {
-                            purgedCount++;
-                            logger->info("Driver store package purged successfully: %v",
-                                         result.Package.DriverPackageInfPath);
+                            if (result.Removed)
+                            {
+                                purgedCount++;
+                                logger->info("Driver store package purged successfully: %v",
+                                             result.Package.DriverPackageInfPath);
+                            }
+                            else
+                            {
+                                failedCount++;
+                                logger->warn(
+                                    "Failed to purge driver store package %v, error: %v",
+                                    result.Package.DriverPackageInfPath,
+                                    result.Error
+                                        ? result.Error->getErrorMessageA()
+                                        : std::string("unknown error"));
+                            }
                         }
-                        else
+
+                        logger->info("Driver store purge: %v of %v matching package(s) removed", purgedCount,
+                                     purgedCount + failedCount);
+
+                        if (failedCount > 0)
                         {
-                            failedCount++;
-                            logger->warn(
-                                "Failed to purge driver store package %v, error: %v; a reboot may be required",
-                                result.Package.DriverPackageInfPath,
-                                result.Error
-                                    ? result.Error->getErrorMessageA()
-                                    : std::string("unknown error"));
-                            rebootRequired = true;
+                            storePurgeFailed = true;
                         }
                     }
-
-                    logger->info("Driver store purge: %v of %v matching package(s) removed", purgedCount,
-                                 purgedCount + failedCount);
                 }
             }
         }
@@ -872,6 +893,12 @@ int main(int argc, char* argv[])
         if (rebootRequired)
         {
             logger->warn("Filter driver removed, but a reboot may be required to fully complete this operation");
+        }
+
+        if (storePurgeFailed)
+        {
+            logger->error("Filter driver removed, but the driver store purge did not fully complete");
+            return EXIT_FAILURE;
         }
 
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
