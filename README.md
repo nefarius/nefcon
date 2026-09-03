@@ -21,6 +21,9 @@ Windows Device Driver management is and always has been hard. The APIs involved 
 - Offers optional logging to `stdout` or file
 - *Sane* command line arguments 😁
 - Manipulation of [class filter](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/filter-drivers) entries
+- Ordered, race-safe class filter driver install and uninstall
+- Surgical driver-store package purge without touching device nodes
+- Live driver upgrade via detach / re-enumerate
 - Supports installation of [primitive drivers](https://learn.microsoft.com/en-us/windows-hardware/drivers/develop/creating-a-primitive-driver)
 
 ## How to build
@@ -49,7 +52,7 @@ To build against your local neflib checkout instead of the published package:
 
 1. `git submodule update --init neflib`
 2. `set NEFCON_LOCAL_NEFLIB=1` before running `prepare-deps.bat` or building from Visual Studio (this activates the `ports/neflib` overlay port, which builds `neflib/src/neflib.vcxproj` in place)
-3. After editing neflib sources, run `.\sync-local-neflib.ps1` (from PowerShell; from a Developer Command Prompt use `powershell -File .\sync-local-neflib.ps1`) to stamp `ports/neflib/portfile.cmake` with a fresh hash of the neflib sources — vcpkg's cache is keyed off the port files, not `neflib/`'s contents, so without this step edits would not trigger a rebuild
+3. After editing neflib sources, run `.\sync-local-neflib.ps1` (from PowerShell; from a Developer Command Prompt use `powershell -File .\sync-local-neflib.ps1`) to stamp `ports/neflib/portfile.cmake` with a fresh hash of the neflib sources — vcpkg's cache is keyed off the port files, not `neflib/`'s contents, so without this step edits would not trigger a rebuild. If a rebuild still ignores the edits, delete `vcpkg_installed` entirely to force a clean reinstall (MSBuild can skip `vcpkg install` based on timestamps even after the source hash changes).
 
 Unset `NEFCON_LOCAL_NEFLIB` (and re-run `prepare-deps.bat`) to go back to the published package. Note that the submodule's pinned commit and the registry's baseline in `vcpkg-configuration.json` are independent pins that can drift; the registry baseline is what CI and release builds actually use, the submodule is purely a development convenience.
 
@@ -82,7 +85,7 @@ winget install nefcon
 
 ## Command Reference
 
-All commands require **Administrator** privileges unless noted. Paths may be absolute or relative to the current working directory. GUID format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (brackets optional). Check exit code `ERROR_SUCCESS_REBOOT_REQUIRED` (3010) when a reboot is needed.
+All commands require **Administrator** privileges unless noted. Paths may be absolute or relative to the current working directory. GUID format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (brackets optional). Check exit code `ERROR_SUCCESS_REBOOT_REQUIRED` (3010) when a reboot is needed. An unrecognized command line prints usage and returns a non-zero exit code. A recognized command that is missing a required value logs an error and returns `EXIT_FAILURE` without printing usage. `--help` / `-h` or no arguments still return 0.
 
 | Command | Description |
 |---------|-------------|
@@ -104,8 +107,10 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 | `--find-hwid` | Search devices by partial hardware ID (no admin) |
 | `--enable-bluetooth-service` | Enable local Bluetooth service |
 | `--disable-bluetooth-service` | Disable local Bluetooth service |
+| `install [INFFile] [HardwareID]` | devcon-compatible ROOT device + driver install |
 | `remove [HardwareID]` | devcon-compatible device removal (device only, driver stays in store) |
-| `-v, --version` | Display version |
+| `-h, --help` | Print usage (no admin) |
+| `-v, --version` | Display version (no admin) |
 
 ### Driver installation
 
@@ -166,16 +171,16 @@ These two commands wrap the same underlying operations as the sections above int
 **`--install-filter-driver`** — Installs an INF-based filter driver (equivalent to `--inf-default-install --attempt-restart-affected`), then waits for every filter service the INF declares to settle into a state the caller can trust before returning, instead of the caller having to probe it immediately afterwards.
 
 - **Required:** `--inf-path`
-- **Optional:** `--class-guid` — additional Device Class GUID to restart, on top of what the INF declares (this only extends the restart list; it does not add extra services to the settle/health check below); `--restart-timeout` — milliseconds to wait per device restart attempt, default `10000`; `--health-timeout` — milliseconds to wait for each declared filter service to reach `SERVICE_RUNNING` when a device of its class is present, default `10000`
-- **Behavior:** A filter service is only expected to reach `SERVICE_RUNNING` if a device of its class is currently present. If no device of that class is present, the service is expected to remain registered but stopped (demand-started) — that is logged, not reported as an error. This is the fix for a caller that immediately checks "is the service present and running" right after install and mistakes a legitimately-still-starting or legitimately-not-yet-started service for a failed install. If the INF's class filter targets cannot be determined after installing it, the settle step cannot verify anything trustworthy, so it reports `ERROR_SUCCESS_REBOOT_REQUIRED` rather than silently returning success.
+- **Optional:** `--class-guid` — additional Device Class GUID to restart, on top of what the INF declares (this only extends the restart list; it does not add extra services to the settle/health check below); `--restart-timeout` — milliseconds to wait per device restart attempt, default `10000`; `--health-timeout` — milliseconds to wait for each declared filter service to reach `SERVICE_RUNNING` when a device of its class is present, default `10000`; `--stop-timeout` — milliseconds to wait for a lingering filter service (from a previous uninstall) to leave the SCM database before retrying a failed INF install, default `10000`
+- **Behavior:** A filter service is only expected to reach `SERVICE_RUNNING` if a device of its class is currently present. If no device of that class is present, the service is expected to remain registered but stopped (demand-started) — that is logged, not reported as an error. This is the fix for a caller that immediately checks "is the service present and running" right after install and mistakes a legitimately-still-starting or legitimately-not-yet-started service for a failed install. If the INF's class filter targets cannot be determined after installing it, the settle step cannot verify anything trustworthy, so it reports `ERROR_SUCCESS_REBOOT_REQUIRED` rather than silently returning success. If the INF install itself fails because a just-uninstalled filter service is still "marked for deletion", the command waits up to `--stop-timeout` for those services to leave the SCM database and retries the install once.
 - **Pitfalls:** The INF install itself either fully succeeds or fails outright; but once it succeeds, a problem in the following restart/health-check phase (e.g. a service that never reaches `SERVICE_RUNNING`) is reported via a non-zero/reboot-required exit code without undoing the install — the filter driver stays installed either way
 - **When to use:** Installing a class filter driver (e.g. HidHide-style) where you need to know the outcome is trustworthy before proceeding, without hand-rolling a wait loop
 
 **`--uninstall-filter-driver`** — Removes a class filter entry and its driver service as one ordered sequence: the filter registry entry is removed and its removal is *confirmed* before the service is touched at all, so it is impossible to end up with a dangling `UpperFilters`/`LowerFilters` entry pointing at a since-deleted service (which can prevent the whole device class from starting). Once removal is confirmed, present devices of the class are automatically restarted, and only then is the driver service deleted; deletion is retried across a short window to absorb the brief race where the kernel hasn't yet released the driver image.
 
 - **Required:** `--position` (`upper` or `lower`), `--service-name`, `--class-guid`
-- **Optional:** `--restart-timeout` — milliseconds to wait per device restart attempt performed automatically after the filter entry is removed, default `10000` (a reboot may still be required for devices that could not be restarted); `--stop-timeout` — milliseconds to wait for the service to stop, default `10000`; `--retry-timeout` — milliseconds to keep retrying service deletion while the driver image is still in use, default `5000`; `--inf-path` — path to the *original* INF file; when given, also purges every driver store package matching this filter's class GUID + service name + the INF's original base name after the service has been deleted (surgical removal, no device nodes touched), default: not purged. If the given path doesn't exist, a warning is logged and the purge is skipped — the command still completes normally instead of failing. By default the purge additionally requires the package's own `[Version]` `Provider`/`DriverVer` to match `--inf-path` exactly (so only the version that was actually installed is removed, not other versions of the same driver that may also be in the store); add `--all-versions` to drop that extra check and remove every version of the matching package instead
-- **Pitfalls:** If the filter registry entry cannot be confirmed removed, the command aborts *before* deleting the service, to avoid the bricking scenario described above — check the error and fix the underlying issue rather than forcing service deletion separately. Because later steps are not rolled back, a failure further along (device restart requiring a reboot, or service deletion exhausting its retries) can leave the filter entry already removed but the service still present; re-running the command is safe (filter removal is idempotent), or use `--remove-driver-service` standalone to finish deleting the service. The driver-store purge is opt-in only via `--inf-path`; it is never performed implicitly. If zero packages match, a warning is logged ("nothing purged") rather than reporting success; if some but not all matching packages fail to delete (e.g. still bound to a device), each failure is logged individually and a reboot is assumed to be required
+- **Optional:** `--restart-timeout` — milliseconds to wait per device restart attempt performed automatically after the filter entry is removed, default `10000` (a reboot may still be required for devices that could not be restarted); `--stop-timeout` — milliseconds to wait for the service to stop, default `10000`; `--retry-timeout` — milliseconds to keep retrying service deletion while the driver image is still in use, default `5000`; `--inf-path` — path to the *original* INF file; when given, also purges every driver store package matching this filter's class GUID + service name + the INF's original base name after the service has been deleted (surgical removal, no device nodes touched), default: not purged. If the given path doesn't exist, a warning is logged and the purge is skipped — the command still completes normally instead of failing. By default the purge additionally requires the package's own `[Version]` `Provider`/`DriverVer` to match `--inf-path` exactly (so only the version that was actually installed is removed, not other versions of the same driver that may also be in the store); add `--all-versions` to drop that extra check and remove every version of the matching package instead. If the `[Version]` identity cannot be read from `--inf-path` and `--all-versions` was not passed, the purge is refused (to avoid silently widening to every version) and the command exits non-zero even though the filter/service removal already succeeded
+- **Pitfalls:** If the filter registry entry cannot be confirmed removed, the command aborts *before* deleting the service, to avoid the bricking scenario described above — check the error and fix the underlying issue rather than forcing service deletion separately. Because later steps are not rolled back, a failure further along (device restart requiring a reboot, or service deletion exhausting its retries) can leave the filter entry already removed but the service still present; re-running the command is safe (filter removal is idempotent), or use `--remove-driver-service` standalone to finish deleting the service. The driver-store purge is opt-in only via `--inf-path`; it is never performed implicitly. If zero packages match, a warning is logged ("nothing purged") and the command still returns success (the filter and service are already gone). If some but not all matching packages fail to delete (e.g. still bound to a device), each failure is logged individually and the command returns `EXIT_FAILURE` (the filter/service removal is not undone)
 - **When to use:** Removing a class filter driver cleanly, especially in unattended/scripted uninstalls where the two-command sequence's race conditions are unacceptable
 
 **`--remove-driver-store-package`** — Standalone command to surgically purge one or more packages from the driver store by original INF name, without touching any device node and without needing to stop/uninstall anything else first. Unlike `--uninstall-filter-driver`'s built-in purge (which is scoped to the filter it just removed), this command can target any package(s) directly, and always considers every version present unless narrowed further.
@@ -363,7 +368,7 @@ The [`devcon install`](https://learn.microsoft.com/en-us/windows-hardware/driver
 
 ## For developers
 
-The driver and device management logic is implemented in [neflib](https://github.com/nefarius/neflib). Key modules include `Devcon.hpp` (InstallDriver, UninstallDriver, InfDefaultInstall, Create, etc.) and `ClassFilter.hpp`. For implementation details, API behavior, or to contribute fixes, see the [neflib repository](https://github.com/nefarius/neflib).
+The driver and device management logic is implemented in [neflib](https://github.com/nefarius/neflib). Key modules include `Devcon.hpp` (InstallDriver, UninstallDriver, InfDefaultInstall, Create, driver-store find/remove APIs, etc.), `ClassFilter.hpp`, and `DeviceRestart.hpp`. For implementation details, API behavior, or to contribute fixes, see the [neflib repository](https://github.com/nefarius/neflib).
 
 ## 3rd party credits
 
@@ -371,7 +376,6 @@ This project uses the following 3rd party resources:
 
 - [Argh! A minimalist argument handler](https://github.com/adishavit/argh)
 - [Scoped coloring of Windows console output](https://github.com/jrebacz/colorwin)
-- [Convenient high-level C++ wrappers around Windows Registry Win32 APIs](https://github.com/GiovanniDicanio/WinReg)
 - [Single header C++ logging library](https://github.com/amrayn/easyloggingpp)
 - [Microsoft Detours](https://github.com/microsoft/Detours)
 - [A modern C++ scope guard that is easy to use but hard to misuse](https://github.com/ricab/scope_guard)
