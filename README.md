@@ -188,7 +188,7 @@ These two commands wrap the same underlying operations as the sections above int
 
 - **Required:** `--service-name`
 - **Optional:** `--stop-timeout` — milliseconds to wait for the service to stop before giving up, default `10000`
-- **Optional:** `--attempt-detach-affected` — before stopping/deleting the service, best-effort detach every present device currently bound to it (releasing the driver's file locks so the .sys can be safely replaced/deleted), best-effort (a reboot may still be required for devices that could not be detached); successfully detached devices are recorded to a state file for a later `--reenumerate-affected` call. `--restart-timeout` sets the per-device detach timeout in milliseconds (default `10000`); `--state-file` overrides where the state is written (default a per-service-name file under `%TEMP%\nefconc`)
+- **Optional:** `--attempt-detach-affected` — before stopping/deleting the service, best-effort detach every present device currently bound to it (releasing the driver's file locks so the .sys can be safely replaced/deleted), best-effort (a reboot may still be required for devices that could not be detached); successfully detached devices are recorded to a state file for a later `--reenumerate-affected` call. `--restart-timeout` sets the per-device detach timeout in milliseconds (default `10000`); `--state-file` overrides where the state is written (default a per-service-name file under `%ProgramData%\nefconc`, access-restricted to Administrators/SYSTEM since a later elevated `--reenumerate-affected` call trusts it without further validation)
 - **Pitfalls:** Stopping the service does not by itself release devnodes still bound to it; use `--attempt-detach-affected` if you intend to replace or delete the driver's files afterwards. Some drivers never advertise support for being stopped live (no unload routine) — the service is still marked for deletion in that case, but a reboot is required to fully remove it (reflected in the exit code)
 - **When to use:** Live driver upgrades/removal — pair with `--reenumerate-affected` after replacing the driver files
 
@@ -219,7 +219,7 @@ These two commands wrap the same underlying operations as the sections above int
 ### Logging
 
 - `--default-log-file=.\log.txt` — Write execution details to file
-- `--verbose` — Enable diagnostic logging
+- `--verbose` — Enable diagnostic logging: in addition to nefcon's own per-step detail, this also surfaces intermediate neflib events that are otherwise invisible (restart strategy attempts and why one was rejected, INF install/uninstall dialog interception, driver service-deletion retries, ...). Warnings and errors are always shown regardless of `--verbose`
 
 ### devcon compatibility
 

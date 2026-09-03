@@ -39,6 +39,9 @@
 #include <variant>
 #include <chrono>
 #include <functional>
+#include <cerrno>
+#include <cstring>
+#include <format>
 
 //
 // Add some colors to console
@@ -71,3 +74,10 @@
 #include <nefarius/neflib/Devcon.hpp>
 #include <nefarius/neflib/DeviceRestart.hpp>
 #include <nefarius/neflib/MiscWinApi.hpp>
+#include <nefarius/neflib/Diagnostics.hpp>
+#include <nefarius/neflib/DiagnosticsFormat.hpp>
+
+//
+// Internal (must follow the neflib headers above)
+// 
+#include "NeflibDiagnostics.hpp"
