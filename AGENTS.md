@@ -71,7 +71,15 @@ Use this while iterating on `neflib` source before it's ready to publish:
    genuinely-valid, still-applicable issues with minimal targeted changes, and explicitly
    skip/justify anything that's pre-existing/out-of-scope/design-level rather than attempting a
    risky broad refactor inside an unrelated PR. Rebuild and re-verify before pushing again.
-6. Once approved, merge the `neflib` PR to its `master`.
+6. **Do not merge on green CI alone.** A passing `build` check says nothing about whether the
+   automated reviewer's findings were actually addressed. Every time the branch is pushed
+   (including follow-up fix commits), re-check for pending review feedback before merging:
+   `gh pr view <num> --json comments -q '.comments[-3:]'` to read the latest CodeRabbit
+   summary/"actionable comments" count for the most recent commit range, and
+   `gh pr view <num> --json reviews` for any human review state (`CHANGES_REQUESTED` etc.).
+   Only merge once the latest review round for the current HEAD has no unresolved actionable
+   findings.
+7. Once approved, merge the `neflib` PR to its `master`.
 
 ### 2. Update the version pointers and publish
 
