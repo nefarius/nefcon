@@ -19,9 +19,11 @@ real, previously-encountered failure mode.
 
 Use this while iterating on `neflib` source before it's ready to publish:
 
-1. Set `NEFCON_LOCAL_NEFLIB=1` in the shell environment. `Directory.Build.props` uses this to
-   switch vcpkg to the local overlay port at `ports/neflib`, which builds directly from the
-   `neflib` submodule working tree instead of downloading a tagged release from the registry.
+1. Set `NEFCON_LOCAL_NEFLIB=1` in the shell environment before invoking `msbuild`:
+   POSIX shells: `export NEFCON_LOCAL_NEFLIB=1`; PowerShell: `$env:NEFCON_LOCAL_NEFLIB = "1"`.
+   `Directory.Build.props` uses this to switch vcpkg to the local overlay port at
+   `ports/neflib`, which builds directly from the `neflib` submodule working tree instead of
+   downloading a tagged release from the registry.
 2. After editing anything under `neflib/include` or `neflib/src`, run
    `./sync-local-neflib.ps1`. This stamps a `# source-hash:` comment into
    `ports/neflib/portfile.cmake` so vcpkg's ABI hash changes and it doesn't serve a stale
@@ -73,7 +75,7 @@ Use this while iterating on `neflib` source before it's ready to publish:
 
 ### 2. Update the version pointers and publish
 
-This is the part that's easy to forget a step of — follow it in full.
+This section is easy to get wrong. Follow every step.
 
 1. In the local `neflib` submodule checkout: `git fetch origin && git checkout master && git pull`
    to get the merge commit.
