@@ -96,6 +96,7 @@ All commands require **Administrator** privileges unless noted. Paths may be abs
 | `--remove-class-filter` | Remove upper/lower filter |
 | `--install-filter-driver` | Ordered, race-safe INF-based filter driver install against slow service startup |
 | `--uninstall-filter-driver` | Ordered, race-safe filter removal; never leaves a dangling filter entry, race-safe against slow service teardown |
+| `--remove-driver-store-package` | Surgically purge one or more packages from the driver store by original INF name, without touching any device node |
 | `--create-driver-service` | Create kernel driver service |
 | `--remove-driver-service` | Delete kernel driver service |
 | `--reenumerate-affected` | Bring back devices detached via `--remove-driver-service --attempt-detach-affected` |
@@ -173,9 +174,17 @@ These two commands wrap the same underlying operations as the sections above int
 **`--uninstall-filter-driver`** — Removes a class filter entry and its driver service as one ordered sequence: the filter registry entry is removed and its removal is *confirmed* before the service is touched at all, so it is impossible to end up with a dangling `UpperFilters`/`LowerFilters` entry pointing at a since-deleted service (which can prevent the whole device class from starting). Once removal is confirmed, present devices of the class are automatically restarted, and only then is the driver service deleted; deletion is retried across a short window to absorb the brief race where the kernel hasn't yet released the driver image.
 
 - **Required:** `--position` (`upper` or `lower`), `--service-name`, `--class-guid`
-- **Optional:** `--restart-timeout` — milliseconds to wait per device restart attempt performed automatically after the filter entry is removed, default `10000` (a reboot may still be required for devices that could not be restarted); `--stop-timeout` — milliseconds to wait for the service to stop, default `10000`; `--retry-timeout` — milliseconds to keep retrying service deletion while the driver image is still in use, default `5000`; `--inf-path` — path to the *original* INF file; when given, also purges the matching published package from the driver store (surgical `oemNN.inf` removal, no device nodes touched) after the service has been deleted, default: not purged. If the given path doesn't exist, a warning is logged and the purge is skipped — the command still completes normally instead of failing
-- **Pitfalls:** If the filter registry entry cannot be confirmed removed, the command aborts *before* deleting the service, to avoid the bricking scenario described above — check the error and fix the underlying issue rather than forcing service deletion separately. Because later steps are not rolled back, a failure further along (device restart requiring a reboot, or service deletion exhausting its retries) can leave the filter entry already removed but the service still present; re-running the command is safe (filter removal is idempotent), or use `--remove-driver-service` standalone to finish deleting the service. The driver-store purge is opt-in only via `--inf-path`; it is never performed implicitly
+- **Optional:** `--restart-timeout` — milliseconds to wait per device restart attempt performed automatically after the filter entry is removed, default `10000` (a reboot may still be required for devices that could not be restarted); `--stop-timeout` — milliseconds to wait for the service to stop, default `10000`; `--retry-timeout` — milliseconds to keep retrying service deletion while the driver image is still in use, default `5000`; `--inf-path` — path to the *original* INF file; when given, also purges every driver store package matching this filter's class GUID + service name + the INF's original base name after the service has been deleted (surgical removal, no device nodes touched), default: not purged. If the given path doesn't exist, a warning is logged and the purge is skipped — the command still completes normally instead of failing. By default the purge additionally requires the package's own `[Version]` `Provider`/`DriverVer` to match `--inf-path` exactly (so only the version that was actually installed is removed, not other versions of the same driver that may also be in the store); add `--all-versions` to drop that extra check and remove every version of the matching package instead
+- **Pitfalls:** If the filter registry entry cannot be confirmed removed, the command aborts *before* deleting the service, to avoid the bricking scenario described above — check the error and fix the underlying issue rather than forcing service deletion separately. Because later steps are not rolled back, a failure further along (device restart requiring a reboot, or service deletion exhausting its retries) can leave the filter entry already removed but the service still present; re-running the command is safe (filter removal is idempotent), or use `--remove-driver-service` standalone to finish deleting the service. The driver-store purge is opt-in only via `--inf-path`; it is never performed implicitly. If zero packages match, a warning is logged ("nothing purged") rather than reporting success; if some but not all matching packages fail to delete (e.g. still bound to a device), each failure is logged individually and a reboot is assumed to be required
 - **When to use:** Removing a class filter driver cleanly, especially in unattended/scripted uninstalls where the two-command sequence's race conditions are unacceptable
+
+**`--remove-driver-store-package`** — Standalone command to surgically purge one or more packages from the driver store by original INF name, without touching any device node and without needing to stop/uninstall anything else first. Unlike `--uninstall-filter-driver`'s built-in purge (which is scoped to the filter it just removed), this command can target any package(s) directly, and always considers every version present unless narrowed further.
+
+- **Required:** `--inf-name` — one or more original INF base names to match (e.g. `mydriver.inf`), case-insensitive; comma-separated for more than one (e.g. `--inf-name "driver1.inf,driver2.inf"`), since repeating the flag itself is not supported and only the last occurrence would be used. Required so this command can never be used to sweep the entire driver store
+- **Optional:** `--class-guid` — narrows matches to packages whose INF declares this device setup class; `--service-name` — narrows matches to packages whose INF registers this class filter service (via `UpperFilters`/`LowerFilters`); does **not** match a function driver's plain `[...Services] AddService` entry
+- **Behavior:** Every populated criterion must match (logical AND); a package for which a requested criterion can't be determined (e.g. its class can't be read) is treated as not matching, never purged by accident. Every matching package is attempted independently — a failure on one (e.g. it is still bound to a present device) does not prevent the others from being deleted; each outcome is logged individually and the command exits non-zero if any matching package failed to delete
+- **Pitfalls:** With only `--inf-name` given, every version of every package with that original name is purged, regardless of class or service — add `--class-guid`/`--service-name` to narrow this if multiple unrelated drivers could plausibly share the same generic INF name
+- **When to use:** Cleaning up leftover/orphaned driver store entries (e.g. after a manual driver removal that didn't clean the store, or before reinstalling a driver from scratch) without going through a full filter-driver uninstall sequence
 
 ### Driver service management
 
@@ -289,8 +298,22 @@ nefconw --install-filter-driver --inf-path "MyFilter.inf"
 # is retried for up to 5s (default) if the driver image isn't freed yet.
 nefconw --uninstall-filter-driver --position upper --service-name KeyboardCaster --class-guid 4D36E96B-E325-11CE-BFC1-08002BE10318
 
-# Same, plus purge the published driver-store package once the service is gone.
+# Same, plus purge the published driver-store package once the service is gone. By default this
+# only removes the version matching MyFilter.inf's own [Version] identity.
 nefconw --uninstall-filter-driver --position upper --service-name KeyboardCaster --class-guid 4D36E96B-E325-11CE-BFC1-08002BE10318 --inf-path "MyFilter.inf"
+
+# Same, but remove every version of the package still in the store, not just the one matching
+# MyFilter.inf's exact identity.
+nefconw --uninstall-filter-driver --position upper --service-name KeyboardCaster --class-guid 4D36E96B-E325-11CE-BFC1-08002BE10318 --inf-path "MyFilter.inf" --all-versions
+
+# Standalone driver-store cleanup, independent of any filter-driver uninstall.
+nefconw --remove-driver-store-package --inf-name "myfilter.inf"
+
+# Narrow to a specific class + filter service, e.g. if multiple unrelated drivers could share the name.
+nefconw --remove-driver-store-package --inf-name "myfilter.inf" --class-guid 4D36E96B-E325-11CE-BFC1-08002BE10318 --service-name KeyboardCaster
+
+# Multiple original INF names in one call (comma-separated; repeating --inf-name is not supported).
+nefconw --remove-driver-store-package --inf-name "driver1.inf,driver2.inf"
 ```
 
 ### Driver service management

@@ -40,6 +40,13 @@ namespace
     //
     bool ValidateExistingFilePath(const std::string& path, const char* pathDescription);
 
+    //
+    // Splits a comma-separated argument value (e.g. --inf-name's value, since argh's
+    // std::map<std::string, std::string> parameter storage silently discards all but the last
+    // occurrence of a repeated flag) into trimmed, non-empty, wide-string entries.
+    //
+    std::vector<std::wstring> SplitCommaSeparatedNames(const std::string& value);
+
     enum class DeviceExistsResult { Found, NotFound, Error };
 
     DeviceExistsResult DeviceExists(const std::string& hwId, int& errorCode);
@@ -143,24 +150,6 @@ namespace
     //
     void DetachAffectedDevicesForService(const argh::parser& cmdl, const std::string& serviceName);
 
-	//
-	// Derives the base name of the original INF file a driver store package was staged from out
-	// of the package's FileRepository directory name, e.g.
-	// "...\FileRepository\example1.inf_amd64_5ca6d479976bcd98\example1.inf" yields
-	// "example1.inf". Returns std::nullopt if the path doesn't follow the
-	// "<originalInfName>_<arch>_<hash>" layout, so callers can fail closed.
-	//
-	std::optional<std::wstring> TryGetOriginalInfNameOfStorePackage(const std::wstring& driverPackageInfPath);
-
-	//
-	// Returns true when the driver store contains at least one package whose original INF file
-	// name (derived from its FileRepository directory) matches the base name of infPath. Used to
-	// gate the driver-store purge of --uninstall-filter-driver on the package actually belonging
-	// to the INF whose service is being removed, so a package that merely shares the same
-	// [Version] identity cannot be deleted by mistake.
-	//
-	bool IsStorePackageForInf(const std::string& infPath);
-
 #if !defined(NEFCON_WINMAIN)
     void CustomizeEasyLoggingColoredConsole();
 #endif
@@ -185,6 +174,7 @@ int main(int argc, char* argv[])
         "--class-name",
         "--class-guid",
         "--service-name",
+        "--inf-name",
         "--position",
         "--display-name",
         "--bin-path",
@@ -791,7 +781,10 @@ int main(int argc, char* argv[])
         //
         // Step 3 (optional): purge the driver-store package. Opt-in only, and run last so the
         // package is deleted only after the filter entry is confirmed gone and the service has
-        // been deleted (i.e. the driver image is already freed).
+        // been deleted (i.e. the driver image is already freed). Matches by class GUID + filter
+        // service name + original INF name (the same identity already validated above), narrowed
+        // to the exact published [Version] identity unless --all-versions asks to purge every
+        // version of this package still in the store.
         // 
         if (const auto storeInfPath = cmdl({"--inf-path"}).str(); !storeInfPath.empty())
         {
@@ -800,27 +793,175 @@ int main(int argc, char* argv[])
                 logger->warn("The given --inf-path \"%v\" doesn't exist; skipping driver store purge",
                              storeInfPath);
             }
-            else if (!IsStorePackageForInf(storeInfPath))
-            {
-                logger->warn("The driver store does not contain a package for \"%v\"; skipping driver store purge",
-                             storeInfPath);
-            }
-            else if (const auto purgeResult = nefarius::devcon::RemoveDriverStorePackage(
-                nefarius::utilities::ConvertAnsiToWide(storeInfPath), &rebootRequired); !purgeResult)
-            {
-                logger->warn("Failed to purge driver store package, error: %v; a reboot may be required",
-                             purgeResult.error().getErrorMessageA());
-                rebootRequired = true;
-            }
             else
             {
-                logger->info("Driver store package purged successfully");
+                std::string normalizedPath(storeInfPath);
+                std::replace(normalizedPath.begin(), normalizedPath.end(), '/', '\\');
+                const auto pathSeparator = normalizedPath.find_last_of('\\');
+                const std::string infBaseName = pathSeparator != std::string::npos
+                    ? normalizedPath.substr(pathSeparator + 1)
+                    : normalizedPath;
+
+                nefarius::devcon::DriverStorePackageFilter filter;
+                filter.ClassGuid = guid.value();
+                filter.ServiceName = nefarius::utilities::ConvertAnsiToWide(serviceName);
+                filter.OriginalInfNames = {nefarius::utilities::ConvertAnsiToWide(infBaseName)};
+
+                if (cmdl[{"--all-versions"}])
+                {
+                    logger->verbose(1, "Purging every version of the driver store package matching \"%v\"",
+                                    storeInfPath);
+                }
+                else if (const auto identity = nefarius::devcon::ReadDriverStoreIdentityFromInf(
+                    nefarius::utilities::ConvertAnsiToWide(storeInfPath).c_str()))
+                {
+                    filter.Provider = identity->Provider;
+                    filter.DriverVer = identity->DriverVer;
+                }
+                else
+                {
+                    logger->warn(
+                        "Could not read the [Version] identity from \"%v\"; purging by class + service + name only, which may remove more than one version",
+                        storeInfPath);
+                }
+
+                const auto purgeResults = nefarius::devcon::RemoveDriverStorePackages(filter, &rebootRequired);
+
+                if (!purgeResults)
+                {
+                    logger->warn("Failed to enumerate the driver store while purging, error: %v",
+                                 purgeResults.error().getErrorMessageA());
+                }
+                else if (purgeResults->empty())
+                {
+                    logger->warn("No matching driver store package found for \"%v\"; nothing purged",
+                                 storeInfPath);
+                }
+                else
+                {
+                    int purgedCount = 0;
+                    int failedCount = 0;
+
+                    for (const auto& result : purgeResults.value())
+                    {
+                        if (result.Removed)
+                        {
+                            purgedCount++;
+                            logger->info("Driver store package purged successfully: %v",
+                                         result.Package.DriverPackageInfPath);
+                        }
+                        else
+                        {
+                            failedCount++;
+                            logger->warn(
+                                "Failed to purge driver store package %v, error: %v; a reboot may be required",
+                                result.Package.DriverPackageInfPath,
+                                result.Error
+                                    ? result.Error->getErrorMessageA()
+                                    : std::string("unknown error"));
+                            rebootRequired = true;
+                        }
+                    }
+
+                    logger->info("Driver store purge: %v of %v matching package(s) removed", purgedCount,
+                                 purgedCount + failedCount);
+                }
             }
         }
 
         if (rebootRequired)
         {
             logger->warn("Filter driver removed, but a reboot may be required to fully complete this operation");
+        }
+
+        return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
+    }
+
+    if (cmdl[{"--remove-driver-store-package"}])
+    {
+        logger->verbose(1, "Invoked --remove-driver-store-package");
+
+        int errorCode;
+        if (!IsAdmin(errorCode)) return errorCode;
+
+        const auto infNameArg = cmdl({"--inf-name"}).str();
+
+        if (infNameArg.empty())
+        {
+            logger->error("--inf-name missing; refusing to run without at least one original INF name, "
+                          "which would otherwise risk sweeping unrelated driver store packages");
+            return EXIT_FAILURE;
+        }
+
+        nefarius::devcon::DriverStorePackageFilter filter;
+        filter.OriginalInfNames = SplitCommaSeparatedNames(infNameArg);
+
+        if (filter.OriginalInfNames.empty())
+        {
+            logger->error("--inf-name did not contain any usable (non-empty) name");
+            return EXIT_FAILURE;
+        }
+
+        if (const auto classGuidArg = cmdl({"--class-guid"}).str(); !classGuidArg.empty())
+        {
+            const auto guid = nefarius::winapi::GUIDFromString(classGuidArg);
+
+            if (!guid)
+            {
+                logger->error(
+                    "Device Class GUID format invalid, expected format (with or without brackets): xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
+                return EXIT_FAILURE;
+            }
+
+            filter.ClassGuid = guid.value();
+        }
+
+        if (const auto serviceNameArg = cmdl({"--service-name"}).str(); !serviceNameArg.empty())
+        {
+            filter.ServiceName = nefarius::utilities::ConvertAnsiToWide(serviceNameArg);
+        }
+
+        bool rebootRequired = false;
+        const auto purgeResults = nefarius::devcon::RemoveDriverStorePackages(filter, &rebootRequired);
+
+        if (!purgeResults)
+        {
+            logger->error("Failed to purge driver store packages, error: %v",
+                          purgeResults.error().getErrorMessageA());
+            return purgeResults.error().getErrorCode();
+        }
+
+        if (purgeResults->empty())
+        {
+            logger->warn("No matching driver store package found for the given criteria; nothing purged");
+            return EXIT_SUCCESS;
+        }
+
+        int purgedCount = 0;
+        int failedCount = 0;
+
+        for (const auto& result : purgeResults.value())
+        {
+            if (result.Removed)
+            {
+                purgedCount++;
+                logger->info("Driver store package purged successfully: %v", result.Package.DriverPackageInfPath);
+            }
+            else
+            {
+                failedCount++;
+                logger->warn("Failed to purge driver store package %v, error: %v",
+                             result.Package.DriverPackageInfPath,
+                             result.Error ? result.Error->getErrorMessageA() : std::string("unknown error"));
+            }
+        }
+
+        logger->info("Driver store purge: %v of %v matching package(s) removed", purgedCount,
+                     purgedCount + failedCount);
+
+        if (failedCount > 0)
+        {
+            return EXIT_FAILURE;
         }
 
         return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
@@ -1546,6 +1687,11 @@ int main(int argc, char* argv[])
     std::cout << "      --stop-timeout           Milliseconds to wait for the service to stop, default 10000 (optional)" << '\n';
     std::cout << "      --retry-timeout          Milliseconds to keep retrying service deletion while the driver image is still in use, default 5000 (optional)" << '\n';
     std::cout << "      --inf-path               Path to the original INF file; if given, also purges the matching published package from the driver store, default: not purged (optional)" << '\n';
+    std::cout << "      --all-versions           With --inf-path, purge every version of the matching package in the driver store instead of only the one matching its exact [Version] identity (optional)" << '\n';
+    std::cout << "    --remove-driver-store-package Surgically purges one or more packages from the driver store by original INF name, without touching any device node" << '\n';
+    std::cout << "      --inf-name               Comma-separated original INF base name(s) to match, e.g. \"mydriver.inf\" (required)" << '\n';
+    std::cout << "      --class-guid             Device Class GUID the package's INF must declare, narrows matches further (optional)" << '\n';
+    std::cout << "      --service-name           Filter driver service name the package's INF must register (via UpperFilters/LowerFilters), narrows matches further; does NOT match a function driver's plain AddService entry (optional)" << '\n';
     std::cout << "    --create-driver-service    Creates a new service with a kernel driver as binary" << '\n';
     std::cout << "      --bin-path               Path to the .sys file, absolute or relative to CWD (required)" << '\n';
     std::cout << "      --service-name           The driver service name to create (required)" << '\n';
@@ -1663,6 +1809,28 @@ namespace
         }
 
         return true;
+    }
+
+    std::vector<std::wstring> SplitCommaSeparatedNames(const std::string& value)
+    {
+        std::vector<std::wstring> names;
+        std::stringstream stream(value);
+        std::string entry;
+
+        while (std::getline(stream, entry, ','))
+        {
+            const auto first = entry.find_first_not_of(" \t");
+            const auto last = entry.find_last_not_of(" \t");
+
+            if (first == std::string::npos)
+            {
+                continue;
+            }
+
+            names.push_back(nefarius::utilities::ConvertAnsiToWide(entry.substr(first, last - first + 1)));
+        }
+
+        return names;
     }
 
     // ToString(RestartStrategy)/ProblemCodeToString/DescribeFinalDevNodeState/
@@ -2713,119 +2881,6 @@ namespace
 
         return result;
     }
-
-	//
-	// Derives the base name of the original INF file a driver store package was staged from out
-	// of the package's FileRepository directory name, e.g.
-	// "...\FileRepository\example1.inf_amd64_5ca6d479976bcd98\example1.inf" yields
-	// "example1.inf". Returns std::nullopt if the path doesn't follow the
-	// "<originalInfName>_<arch>_<hash>" layout, so callers can fail closed.
-	//
-	std::optional<std::wstring> TryGetOriginalInfNameOfStorePackage(const std::wstring& driverPackageInfPath)
-	{
-		std::wstring packageDirName(driverPackageInfPath);
-		const auto lastSeparator = packageDirName.find_last_of(L'\\');
-
-		if (lastSeparator == std::wstring::npos)
-		{
-			return std::nullopt;
-		}
-
-		//
-		// The staged copy of the INF lives inside its package directory, which is the component
-		// right before the final one when the path ends in the INF file itself.
-		//
-		const std::wstring lastComponent(packageDirName, lastSeparator + 1);
-
-		if (lastComponent.size() >= 4 &&
-			_wcsicmp(lastComponent.c_str() + lastComponent.size() - 4, L".inf") == 0)
-		{
-			packageDirName.erase(lastSeparator);
-
-			const auto dirSeparator = packageDirName.find_last_of(L'\\');
-
-			if (dirSeparator == std::wstring::npos)
-			{
-				return std::nullopt;
-			}
-
-			packageDirName.erase(0, dirSeparator + 1);
-		}
-		else
-		{
-			packageDirName.erase(0, lastSeparator + 1);
-		}
-
-		//
-		// The original name is the prefix up to the last ".inf_" separator (mirrors the
-		// greedy "(.+\.inf)_.+$" extraction used by DriverStoreExplorer).
-		//
-		PCWSTR lastInfoSeparator = nullptr;
-		PCWSTR cursor = packageDirName.c_str();
-
-		while (const auto* occurrence = wcsstr(cursor, L".inf_"))
-		{
-			lastInfoSeparator = occurrence;
-			cursor = occurrence + 1;
-		}
-
-		//
-		// Fail closed: the separator needs a non-empty prefix, and there must be at least one
-		// character (architecture/hash) after it.
-		//
-		if (lastInfoSeparator == nullptr || lastInfoSeparator == packageDirName.c_str() ||
-			lastInfoSeparator + 5 >= packageDirName.c_str() + packageDirName.size())
-		{
-			return std::nullopt;
-		}
-
-		return packageDirName.substr(0,
-			static_cast<size_t>(lastInfoSeparator - packageDirName.c_str()) + 4);
-	}
-
-	//
-	// Returns true when the driver store contains at least one package whose original INF file
-	// name (derived from its FileRepository directory) matches the base name of infPath. Used to
-	// gate the driver-store purge of --uninstall-filter-driver on the package actually belonging
-	// to the INF whose service is being removed, so a package that merely shares the same
-	// [Version] identity cannot be deleted by mistake.
-	//
-	bool IsStorePackageForInf(const std::string& infPath)
-	{
-		el::Logger* logger = el::Loggers::getLogger("default");
-
-		std::string normalizedPath(infPath);
-		std::replace(normalizedPath.begin(), normalizedPath.end(), '/', '\\');
-
-		const auto separator = normalizedPath.find_last_of('\\');
-		const std::string infBaseName = separator != std::string::npos
-			? normalizedPath.substr(separator + 1)
-			: normalizedPath;
-
-		const auto packages = nefarius::devcon::EnumerateDriverStorePackages();
-		if (!packages)
-		{
-			// Distinguish "the store was enumerated and genuinely has no matching package" (the
-			// caller's own follow-up warning covers that) from "we couldn't even enumerate the
-			// store", which would otherwise silently look identical and could mask a real problem
-			// (e.g. a corrupted store) as if the package had simply never been installed.
-			logger->warn("Failed to enumerate the driver store while looking for a package matching \"%v\", error: %v",
-			             infPath, packages.error().getErrorMessageA());
-			return false;
-		}
-
-		for (const auto& package : packages.value())
-		{
-			const auto originalName = TryGetOriginalInfNameOfStorePackage(package.DriverPackageInfPath);
-			if (originalName && _wcsicmp(originalName->c_str(),
-										 nefarius::utilities::ConvertAnsiToWide(infBaseName).c_str()) == 0)
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
 
 #if !defined(NEFCON_WINMAIN)
     /**
