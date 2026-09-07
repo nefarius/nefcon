@@ -230,7 +230,7 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Sign binaries
-        uses: nefarius/SignRelay@v1.2.0
+        uses: nefarius/SignRelay@v1.3.0
         with:
           server: https://signrelay.api.nefarius.systems/
           token: ${{ secrets.SIGN_RELAY_CI_TOKEN }}
