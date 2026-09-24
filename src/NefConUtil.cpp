@@ -1912,10 +1912,11 @@ namespace
                 // used whether a consumer only looks at this summary or also has --verbose on.
                 const std::string description = DescribeDeviceRestartResult(result);
 
-                if (result.Succeeded || !result.DevicePresent)
+                if (result.SkipReason == nefarius::devcon::DeviceRestartSkipReason::AcpiDevice ||
+                    result.Succeeded || !result.DevicePresent)
                 {
-                    // Success, or the device disappeared during the restart ladder (unplugged, or
-                    // a phantom node) - there is nothing left to restart, informational either way.
+                    // A deliberate ACPI policy skip, success, or a device that disappeared during
+                    // the restart ladder is informational. Reboot evidence is still evaluated below.
                     logger->info("%v", description);
                 }
                 else
