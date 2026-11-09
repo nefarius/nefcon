@@ -2,6 +2,7 @@
 // ReSharper disable CppClangTidyBugproneNarrowingConversions
 // ReSharper disable CppClangTidyHicppAvoidGoto
 #include "NefConUtil.h"
+#include "DriverRemovalWorkflow.hpp"
 
 #include <algorithm>
 #include <numeric>
@@ -749,159 +750,142 @@ int main(int argc, char* argv[])
         const int stopTimeoutMs = ParseTimeoutMs(cmdl, "--stop-timeout", 10000);
         const int retryTimeoutMs = ParseTimeoutMs(cmdl, "--retry-timeout", 5000);
 
-        //
-        // The restart above tore down/rebuilt the affected device stacks, which is what actually
-        // unloads a class filter driver (it does not honor a live SCM stop request). Give that
-        // unload a chance to land before deleting: DeleteService fully removes a service that is
-        // already SERVICE_STOPPED, but only *marks for deletion* one whose driver is still loaded,
-        // leaving a lingering registration that makes an immediate reinstall fail with
-        // ERROR_SERVICE_MARKED_FOR_DELETE. Waiting for SERVICE_STOPPED here closes that
-        // install/uninstall-cycle gap. A missing service (nothing to stop) or a wait timeout are
-        // both fine - we fall through to the delete-with-retry either way.
-        // 
-        if (const auto stopped = nefarius::winapi::services::WaitForServiceState(
-            serviceName, SERVICE_STOPPED, std::chrono::milliseconds(stopTimeoutMs)); stopped)
-        {
-            logger->verbose(1, stopped->dwCurrentState == SERVICE_STOPPED
-                                   ? "Filter service \"%v\" is stopped; deleting"
-                                   : "Filter service \"%v\" not stopped in time; deleting anyway",
-                            serviceName);
-        }
-
-        if (const auto deleteResult = nefarius::winapi::services::DeleteDriverServiceWithRetry(
-            serviceName, std::chrono::milliseconds(stopTimeoutMs), std::chrono::milliseconds(retryTimeoutMs),
-            &rebootRequired); !deleteResult)
-        {
-            logger->error("Failed to remove driver service, error: %v", deleteResult.error().getErrorMessageA());
-            return deleteResult.error().getErrorCode();
-        }
-
-        logger->info("Driver service removed successfully");
-
-        //
-        // Step 3 (optional): purge the driver-store package. Opt-in only, and run last so the
-        // package is deleted only after the filter entry is confirmed gone and the service has
-        // been deleted (i.e. the driver image is already freed). Matches by class GUID + filter
-        // service name + original INF name (the same identity already validated above), narrowed
-        // to the exact published [Version] identity unless --all-versions asks to purge every
-        // version of this package still in the store.
-        // 
-        bool storePurgeFailed = false;
-
-        if (const auto storeInfPath = cmdl({"--inf-path"}).str(); !storeInfPath.empty())
-        {
-            if (_access(storeInfPath.c_str(), 0) != 0)
+        // The library now owns stop attempts and post-delete completion polling under one
+        // shared budget. A separate pre-delete wait would spend stop-timeout twice.
+        const DWORD removalExitCode = DriverRemovalWorkflow::Run(rebootRequired,
+            [&](bool& servicePending) -> DWORD
             {
-                logger->warn("The given --inf-path \"%v\" doesn't exist; skipping driver store purge",
-                             storeInfPath);
-            }
-            else
-            {
-                std::string normalizedPath(storeInfPath);
-                std::replace(normalizedPath.begin(), normalizedPath.end(), '/', '\\');
-                const auto pathSeparator = normalizedPath.find_last_of('\\');
-                const std::string infBaseName = pathSeparator != std::string::npos
-                    ? normalizedPath.substr(pathSeparator + 1)
-                    : normalizedPath;
-
-                nefarius::devcon::DriverStorePackageFilter filter;
-                filter.ClassGuid = guid.value();
-                filter.ServiceName = nefarius::utilities::ConvertAnsiToWide(serviceName);
-                filter.OriginalInfNames = {nefarius::utilities::ConvertAnsiToWide(infBaseName)};
-
-                bool skipStorePurge = false;
-                const bool allVersions = cmdl[{"--all-versions"}];
-
-                if (allVersions)
+                const auto result = nefarius::winapi::services::DeleteDriverServiceWithRetry(
+                    serviceName, std::chrono::milliseconds(stopTimeoutMs),
+                    std::chrono::milliseconds(retryTimeoutMs), &servicePending);
+                if (!result)
                 {
-                    logger->verbose(1, "Purging every version of the driver store package matching \"%v\"",
-                                    storeInfPath);
+                    logger->error("Failed to remove driver service, error: %v", result.error().getErrorMessageA());
+                    return result.error().getErrorCode();
                 }
-                else if (const auto identity = nefarius::devcon::ReadDriverStoreIdentityFromInf(
-                    nefarius::utilities::ConvertAnsiToWide(storeInfPath).c_str()))
-                {
-                    filter.Provider = identity->Provider;
-                    filter.DriverVer = identity->DriverVer;
-                }
+                if (servicePending)
+                    logger->warn("Driver service deletion is pending; restart before reinstalling. Driver store purge deferred; rerun removal after restart");
                 else
-                {
-                    //
-                    // Without --all-versions, the caller expects an exact single-version purge.
-                    // Falling back to the version-agnostic filter here would silently widen the
-                    // match to every version of this package, so refuse instead of guessing.
-                    // 
-                    logger->error(
-                        "Could not read the [Version] identity from \"%v\"; refusing to purge without --all-versions, "
-                        "since that would risk removing more than the exact matching package",
-                        storeInfPath);
-                    skipStorePurge = true;
-                    storePurgeFailed = true;
-                }
+                    logger->info("Driver service removal confirmed in SCM");
+                return ERROR_SUCCESS;
+            },
+            [&](bool& purgeNeedsReboot) -> DWORD
+            {
+                // Purge only after service absence is confirmed. Preserve each stage's reboot evidence.
+                bool storePurgeFailed = false;
 
-                if (!skipStorePurge)
+                if (const auto storeInfPath = cmdl({"--inf-path"}).str(); !storeInfPath.empty())
                 {
-                    const auto purgeResults = nefarius::devcon::RemoveDriverStorePackages(filter, &rebootRequired);
-
-                    if (!purgeResults)
+                    if (_access(storeInfPath.c_str(), 0) != 0)
                     {
-                        logger->warn("Failed to enumerate the driver store while purging, error: %v",
-                                     purgeResults.error().getErrorMessageA());
-                        storePurgeFailed = true;
-                    }
-                    else if (purgeResults->empty())
-                    {
-                        logger->warn("No matching driver store package found for \"%v\"; nothing purged",
+                        logger->warn("The given --inf-path \"%v\" doesn't exist; skipping driver store purge",
                                      storeInfPath);
                     }
                     else
                     {
-                        int purgedCount = 0;
-                        int failedCount = 0;
+                        std::string normalizedPath(storeInfPath);
+                        std::replace(normalizedPath.begin(), normalizedPath.end(), '/', '\\');
+                        const auto pathSeparator = normalizedPath.find_last_of('\\');
+                        const std::string infBaseName = pathSeparator != std::string::npos
+                            ? normalizedPath.substr(pathSeparator + 1)
+                            : normalizedPath;
 
-                        for (const auto& result : purgeResults.value())
+                        nefarius::devcon::DriverStorePackageFilter filter;
+                        filter.ClassGuid = guid.value();
+                        filter.ServiceName = nefarius::utilities::ConvertAnsiToWide(serviceName);
+                        filter.OriginalInfNames = {nefarius::utilities::ConvertAnsiToWide(infBaseName)};
+
+                        bool skipStorePurge = false;
+                        const bool allVersions = cmdl[{"--all-versions"}];
+
+                        if (allVersions)
                         {
-                            if (result.Removed)
+                            logger->verbose(1, "Purging every version of the driver store package matching \"%v\"",
+                                            storeInfPath);
+                        }
+                        else if (const auto identity = nefarius::devcon::ReadDriverStoreIdentityFromInf(
+                            nefarius::utilities::ConvertAnsiToWide(storeInfPath).c_str()))
+                        {
+                            filter.Provider = identity->Provider;
+                            filter.DriverVer = identity->DriverVer;
+                        }
+                        else
+                        {
+                            //
+                            // Without --all-versions, the caller expects an exact single-version purge.
+                            // Falling back to the version-agnostic filter here would silently widen the
+                            // match to every version of this package, so refuse instead of guessing.
+                            //
+                            logger->error(
+                                "Could not read the [Version] identity from \"%v\"; refusing to purge without --all-versions, "
+                                "since that would risk removing more than the exact matching package",
+                                storeInfPath);
+                            skipStorePurge = true;
+                            storePurgeFailed = true;
+                        }
+
+                        if (!skipStorePurge)
+                        {
+                            const auto purgeResults = nefarius::devcon::RemoveDriverStorePackages(filter, &purgeNeedsReboot);
+
+                            if (!purgeResults)
                             {
-                                purgedCount++;
-                                logger->info("Driver store package purged successfully: %v",
-                                             result.Package.DriverPackageInfPath);
+                                logger->warn("Failed to enumerate the driver store while purging, error: %v",
+                                             purgeResults.error().getErrorMessageA());
+                                storePurgeFailed = true;
+                            }
+                            else if (purgeResults->empty())
+                            {
+                                logger->warn("No matching driver store package found for \"%v\"; nothing purged",
+                                             storeInfPath);
                             }
                             else
                             {
-                                failedCount++;
-                                logger->warn(
-                                    "Failed to purge driver store package %v, error: %v",
-                                    result.Package.DriverPackageInfPath,
-                                    result.Error
-                                        ? result.Error->getErrorMessageA()
-                                        : std::string("unknown error"));
+                                int purgedCount = 0;
+                                int failedCount = 0;
+
+                                for (const auto& result : purgeResults.value())
+                                {
+                                    if (result.Removed)
+                                    {
+                                        purgedCount++;
+                                        logger->info("Driver store package purged successfully: %v",
+                                                     result.Package.DriverPackageInfPath);
+                                    }
+                                    else
+                                    {
+                                        failedCount++;
+                                        logger->warn(
+                                            "Failed to purge driver store package %v, error: %v",
+                                            result.Package.DriverPackageInfPath,
+                                            result.Error
+                                                ? result.Error->getErrorMessageA()
+                                                : std::string("unknown error"));
+                                    }
+                                }
+
+                                logger->info("Driver store purge: %v of %v matching package(s) removed", purgedCount,
+                                             purgedCount + failedCount);
+
+                                if (failedCount > 0)
+                                {
+                                    storePurgeFailed = true;
+                                }
                             }
-                        }
-
-                        logger->info("Driver store purge: %v of %v matching package(s) removed", purgedCount,
-                                     purgedCount + failedCount);
-
-                        if (failedCount > 0)
-                        {
-                            storePurgeFailed = true;
                         }
                     }
                 }
-            }
-        }
 
-        if (rebootRequired)
-        {
-            logger->warn("Filter driver removed, but a reboot may be required to fully complete this operation");
-        }
-
-        if (storePurgeFailed)
-        {
-            logger->error("Filter driver removed, but the driver store purge did not fully complete");
-            return EXIT_FAILURE;
-        }
-
-        return (rebootRequired) ? ERROR_SUCCESS_REBOOT_REQUIRED : EXIT_SUCCESS;
+                if (storePurgeFailed)
+                {
+                    logger->error("Filter driver removed, but the driver store purge did not fully complete");
+                    return EXIT_FAILURE;
+                }
+                return ERROR_SUCCESS;
+            });
+        if (removalExitCode == ERROR_SUCCESS_REBOOT_REQUIRED)
+            logger->warn("Filter removal requires a restart; do not reinstall until after restart");
+        return removalExitCode;
     }
 
     if (cmdl[{"--remove-driver-store-package"}])
@@ -1128,8 +1112,10 @@ int main(int argc, char* argv[])
         const int stopTimeoutMs = ParseTimeoutMs(cmdl, "--stop-timeout", 10000);
         bool rebootRequired = false;
 
-        if (const auto result = nefarius::winapi::services::DeleteDriverService(
-            serviceName, std::chrono::milliseconds(stopTimeoutMs), &rebootRequired); !result)
+        const int retryTimeoutMs = ParseTimeoutMs(cmdl, "--retry-timeout", 5000);
+        if (const auto result = nefarius::winapi::services::DeleteDriverServiceWithRetry(
+            serviceName, std::chrono::milliseconds(stopTimeoutMs),
+            std::chrono::milliseconds(retryTimeoutMs), &rebootRequired); !result)
         {
             logger->error("Failed to remove driver service, error: %v", result.error().getErrorMessageA());
             return result.error().getErrorCode();
@@ -1138,7 +1124,7 @@ int main(int argc, char* argv[])
         if (rebootRequired)
         {
             logger->warn(
-                "Driver service marked for removal, but its driver never advertised support for being stopped live; a reboot is required to fully remove it");
+                "Driver service deletion remains pending after the deadline; restart before reinstalling");
             return ERROR_SUCCESS_REBOOT_REQUIRED;
         }
 
@@ -1713,7 +1699,7 @@ int main(int argc, char* argv[])
     std::cout << "      --class-guid             Device Class GUID to modify (required)" << '\n';
     std::cout << "      --restart-timeout        Milliseconds to wait per device restart attempt, default 10000 (optional)" << '\n';
     std::cout << "      --stop-timeout           Milliseconds to wait for the service to stop, default 10000 (optional)" << '\n';
-    std::cout << "      --retry-timeout          Milliseconds to keep retrying service deletion while the driver image is still in use, default 5000 (optional)" << '\n';
+    std::cout << "      --retry-timeout          Additional service removal budget after stop-timeout, default 5000 ms (optional)" << '\n';
     std::cout << "      --inf-path               Path to the original INF file; if given, also purges the matching published package from the driver store, default: not purged (optional)" << '\n';
     std::cout << "      --all-versions           With --inf-path, purge every version of the matching package in the driver store instead of only the one matching its exact [Version] identity (optional)" << '\n';
     std::cout << "    --remove-driver-store-package Surgically purges one or more packages from the driver store by original INF name, without touching any device node" << '\n';
@@ -1725,6 +1711,7 @@ int main(int argc, char* argv[])
     std::cout << "      --service-name           The driver service name to create (required)" << '\n';
     std::cout << "      --display-name           The friendly name of the service (required)" << '\n';
     std::cout << "    --remove-driver-service    Removes an existing kernel driver service" << '\n';
+    std::cout << "      --retry-timeout          Additional removal budget after stop-timeout, default 5000 ms; pending deletion returns 3010 (optional)" << '\n';
     std::cout << "      --service-name           The driver service name to remove (required)" << '\n';
     std::cout << "      --stop-timeout           Milliseconds to wait for the service to stop, default 10000 (optional)" << '\n';
     std::cout << "      --attempt-detach-affected Best-effort attempt to detach present devices bound to this service before removal, so its driver file can be safely replaced/deleted; a reboot may still be required (optional)" << '\n';

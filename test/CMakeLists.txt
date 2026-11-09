@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.20)
+project(nefcon_removal_tests LANGUAGES CXX)
+enable_testing()
+add_executable(driver-removal-tests DriverRemovalWorkflowTests.cpp)
+target_compile_features(driver-removal-tests PRIVATE cxx_std_17)
+target_compile_options(driver-removal-tests PRIVATE /W4 /WX)
+add_test(NAME driver-removal-workflow COMMAND driver-removal-tests)
