@@ -365,3 +365,6 @@ FodyWeavers.xsd
 /RD*
 /vcpkg_installed/
 .release-local/
+
+# Standalone regression-test build directories
+/test/build*/

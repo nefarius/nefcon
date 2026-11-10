@@ -128,6 +128,18 @@ jobs:
             }
           }
 
+      - name: Build removal regression tests
+        shell: pwsh
+        run: |
+          cmake -S test -B test/build -G Ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build test/build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ('${{ matrix.platform }}' -ne 'ARM64') {
+            ctest --test-dir test/build --output-on-failure
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
       - name: Stage binaries
         shell: pwsh
         run: |
@@ -286,4 +298,33 @@ jobs:
           }
           finally {
             $PSNativeCommandUseErrorActionPreference = $previousNativePreference
+          }
+
+  neflib-integration:
+    name: neflib submodule integration (x64)
+    if: github.event_name == 'pull_request'
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      NEFCON_LOCAL_NEFLIB: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Initialize integration dependencies
+        run: git submodule update --init vcpkg neflib
+      - uses: microsoft/setup-msbuild@v3
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+      - name: Build neflib overlay and nefcon
+        shell: pwsh
+        run: |
+          ./sync-local-neflib.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./vcpkg/bootstrap-vcpkg.bat
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./vcpkg/vcpkg.exe install --triplet x64-windows-static --overlay-ports=ports
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($configuration in @('Release (Console)', 'Release (WinMain)')) {
+            msbuild NefConUtil.sln /t:NefConUtil /m /p:Configuration="$configuration" /p:Platform=x64
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
